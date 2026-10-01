@@ -117,11 +117,12 @@ async function fetchGoogle(ch, from, to) {
 
   let balance = null, funding = null;
   try {
-    const b = await gaql(cid, "SELECT account_budget.approved_spending_limit_micros, account_budget.amount_served_micros FROM account_budget WHERE account_budget.status = 'APPROVED'");
+    const b = await gaql(cid, "SELECT account_budget.approved_spending_limit_type, account_budget.approved_spending_limit_micros, account_budget.amount_served_micros FROM account_budget WHERE account_budget.status = 'APPROVED'");
     if (b.length && b.every((x) => x.accountBudget?.approvedSpendingLimitMicros)) {
       balance = b.reduce((s, x) => s + (+x.accountBudget.approvedSpendingLimitMicros - +(x.accountBudget.amountServedMicros || 0)), 0) / 1e6;
     }
-    if (b.length) funding = 'prepaid';
+    // orçamento ilimitado = sem recarga manual (cartão/faturamento); com teto = recarga manual
+    if (b.length) funding = b.some((x) => x.accountBudget?.approvedSpendingLimitType === 'INFINITE') ? 'auto' : 'prepaid';
   } catch { /* contas com faturamento mensal não têm account_budget */ }
   // sem orçamento de conta, mas com cobrança aprovada: pagamento automático (cartão ou faturamento mensal)
   if (!funding) {
