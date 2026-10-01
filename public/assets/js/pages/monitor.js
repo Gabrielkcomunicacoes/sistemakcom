@@ -6,7 +6,7 @@ const PLAT = { google: 'Google Ads', meta: 'Meta Ads' };
 const RANK = { critical: 0, warning: 1, ok: 2, idle: 3 };
 const RANGES = [['today', 'Hoje'], ['yesterday', 'Ontem'], ['7', '7 dias'], ['14', '14 dias'], ['30', '30 dias'], ['custom', 'Personalizado']];
 
-const prefs = { range: 'today', from: '', to: '', platform: '', status: '', metric: '', q: '', mine: false };
+const prefs = { range: 'today', from: '', to: '', google: false, meta: false, status: '', metric: '', q: '', mine: false };
 let timer, data, tvPage = 0, tvPages = 1;
 
 function trend(v, higherBetter) {
@@ -62,7 +62,7 @@ function cardHtml(c) {
 function filtered() {
   const q = prefs.q.trim().toLowerCase();
   return data.clients
-    .map((c) => ({ ...c, channels: c.channels.filter((ch) => (!prefs.platform || ch.platform === prefs.platform) && (!prefs.metric || ch.metric === prefs.metric)) }))
+    .map((c) => ({ ...c, channels: c.channels.filter((ch) => (!(prefs.google || prefs.meta) || prefs[ch.platform]) && (!prefs.metric || ch.metric === prefs.metric)) }))
     .filter((c) => c.channels.length
       && (!q || c.name.toLowerCase().includes(q))
       && (!prefs.status || c.status === prefs.status)
@@ -130,7 +130,8 @@ export default {
         <div class="seg" id="range">${RANGES.map(([v, l]) => `<button data-v="${v}" class="${prefs.range === v ? 'on' : ''}">${l}</button>`).join('')}</div>
         <span id="custom" class="${prefs.range === 'custom' ? '' : 'hidden'}" style="display:flex;gap:6px"><input type="date" id="from" value="${prefs.from}" style="width:auto"><input type="date" id="to" value="${prefs.to}" style="width:auto"></span>
         <div class="search">${icon('search')}<input id="q" placeholder="Buscar cliente…" value="${esc(prefs.q)}" aria-label="Buscar cliente"></div>
-        <select id="platform" aria-label="Canal"><option value="">Todos os canais</option><option value="google">Google Ads</option><option value="meta">Meta Ads</option></select>
+        <label class="check" style="padding:7px 12px" title="Sem nenhuma marcada, mostra Google e Meta"><input type="checkbox" id="pgoogle" ${prefs.google ? 'checked' : ''}> Google Ads</label>
+        <label class="check" style="padding:7px 12px" title="Sem nenhuma marcada, mostra Google e Meta"><input type="checkbox" id="pmeta" ${prefs.meta ? 'checked' : ''}> Meta Ads</label>
         <select id="metric" aria-label="Tipo"><option value="">Todos os tipos</option><option value="cpl">CPL</option><option value="cpa">CPA (Vendas)</option><option value="followers">Seguidores</option><option value="reach">Alcance</option></select>
         <select id="status" aria-label="Status"><option value="">Todos os status</option><option value="critical">Crítico</option><option value="warning">Atenção</option><option value="ok">Saudável</option></select>
         <label class="check" style="padding:7px 12px"><input type="checkbox" id="mine" ${prefs.mine ? 'checked' : ''}> Meus clientes</label>
@@ -140,7 +141,6 @@ export default {
       <button class="tv-nav next hidden" id="tvnext" aria-label="Próxima página">›</button>
       <button class="btn primary tv-exit hidden" id="tvexit">${icon('x')} Sair do modo TV</button>`;
 
-    root.querySelector('#platform').value = prefs.platform;
     root.querySelector('#status').value = prefs.status;
     root.querySelector('#metric').value = prefs.metric;
     const repaint = () => data && paint(root);
@@ -154,7 +154,8 @@ export default {
     };
     for (const id of ['from', 'to']) root.querySelector(`#${id}`).onchange = (e) => { prefs[id] = e.target.value; if (prefs.from && prefs.to) load(root); };
     root.querySelector('#q').oninput = (e) => { prefs.q = e.target.value; repaint(); };
-    root.querySelector('#platform').onchange = (e) => { prefs.platform = e.target.value; repaint(); };
+    root.querySelector('#pgoogle').onchange = (e) => { prefs.google = e.target.checked; repaint(); };
+    root.querySelector('#pmeta').onchange = (e) => { prefs.meta = e.target.checked; repaint(); };
     root.querySelector('#metric').onchange = (e) => { prefs.metric = e.target.value; repaint(); };
     root.querySelector('#status').onchange = (e) => { prefs.status = e.target.value; repaint(); };
     root.querySelector('#mine').onchange = (e) => { prefs.mine = e.target.checked; repaint(); };
