@@ -71,6 +71,7 @@ export function buildDashboard({ from, to }) {
     const t = sum(days, today, today);
     const avg7 = sum(days, addDays(today, -6), today).spend / 7;
     // cartão/pagamento automático: não há recarga manual, então não há saldo a monitorar
+    if (ch.pay_mode === 'card') ch.funding = 'card'; else if (ch.pay_mode === 'manual') ch.funding = 'prepaid';
     const autoPay = ch.funding === 'card' || ch.funding === 'auto';
     if (autoPay) ch.balance = null;
     const daysLeft = ch.balance != null && avg7 > 0 ? ch.balance / avg7 : null;
@@ -172,7 +173,7 @@ export function clientDetail(clientId, { from, to }, metricFilter = '') {
   const chs = all(
     `SELECT ch.*, cs.balance, cs.error, cs.funding FROM channels ch LEFT JOIN channel_status cs ON cs.channel_id = ch.id
       WHERE ch.client_id = ? AND ch.active = 1 ORDER BY ch.platform`, clientId,
-  ).filter((c) => !metricFilter || c.metric === metricFilter);
+  ).filter((c) => !metricFilter || c.metric === metricFilter).map((c) => ({ ...c, funding: c.pay_mode === 'card' ? 'card' : c.pay_mode === 'manual' ? 'prepaid' : c.funding }));
   const dates = [];
   for (let d = from; d <= to && dates.length < 400; d = addDays(d, 1)) dates.push(d);
   const zero = () => ({ spend: 0, conv: 0, impressions: 0, clicks: 0, reach: 0 });

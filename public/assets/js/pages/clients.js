@@ -7,6 +7,7 @@ const HINTS = {
   followers: 'Custo máximo por seguidor (seguidores do Instagram + curtidas da página).',
   reach: 'Meta de pessoas alcançadas por dia. O saldo vem da API (teto − gasto).',
 };
+const PAY = [['detect', 'Detectar automaticamente'], ['card', 'Cartão / automático (sem recarga)'], ['manual', 'Recarga manual (pré-pago)']];
 const RESULTS = [['auto', 'Automático'], ['lead', 'Leads (formulário)'], ['message', 'Conversas de mensagem'], ['purchase', 'Compras'], ['click', 'Cliques no link'], ['lpv', 'Visualizações da página']];
 
 function channelBox(platform, ch) {
@@ -18,6 +19,8 @@ function channelBox(platform, ch) {
       <div class="field"><label>Métrica</label><select data-metric>${metricOptions(platform).map(([v, l]) => `<option value="${v}" ${(ch?.metric ?? 'cpl') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       <div class="field" data-resfield><label>Evento de resultado</label><select data-result>${RESULTS.map(([v, l]) => `<option value="${v}" ${(ch?.result_type ?? 'auto') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
         <span class="hint">${platform === 'meta' ? 'O que conta como resultado nessa conta' : 'Google usa as conversões da conta'}</span></div>
+      <div class="field"><label>Forma de pagamento</label><select data-pay>${PAY.map(([v, l]) => `<option value="${v}" ${(ch?.pay_mode ?? 'detect') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <span class="hint">Cartão: não alerta saldo</span></div>
       <div class="field"><label data-tlabel>Meta (R$)</label><input data-target type="number" step="0.01" min="0" value="${ch?.target ?? ''}"><span class="hint" data-thint></span></div>
     </div></div>`;
 }
@@ -53,7 +56,7 @@ async function openForm(client, team, done) {
     e.preventDefault();
     const channels = [...el.querySelectorAll('.ch-box')].filter((b) => b.querySelector('[data-on]').checked).map((b) => ({
       platform: b.dataset.p, account_id: b.querySelector('[data-acc]').value.trim(),
-      metric: b.querySelector('[data-metric]').value, result_type: b.querySelector('[data-result]').value, target: b.querySelector('[data-target]').value || 0,
+      metric: b.querySelector('[data-metric]').value, result_type: b.querySelector('[data-result]').value, pay_mode: b.querySelector('[data-pay]').value, target: b.querySelector('[data-target]').value || 0,
     }));
     const body = {
       name: el.querySelector('#name').value, manager_id: el.querySelector('#mgr').value || null,

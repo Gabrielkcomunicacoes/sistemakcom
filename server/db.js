@@ -131,6 +131,9 @@ if (db.prepare("SELECT sql FROM sqlite_master WHERE name = 'channels'").get().sq
   DROP TABLE channels; ALTER TABLE channels_new RENAME TO channels; COMMIT; PRAGMA foreign_keys = ON;`);
 }
 
+// forma de pagamento: 'detect' (lida da API), 'card' (cartão automático) ou 'manual' (recarga manual); manual sobrescreve a detecção
+try { db.exec("ALTER TABLE channels ADD COLUMN pay_mode TEXT NOT NULL DEFAULT 'detect'"); } catch { /* coluna já existe */ }
+
 export const get = (sql, ...p) => db.prepare(sql).get(...p);
 export const all = (sql, ...p) => db.prepare(sql).all(...p);
 export const run = (sql, ...p) => {

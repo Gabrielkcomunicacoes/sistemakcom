@@ -10,6 +10,7 @@ import { monthReport, linksOf, isMonth } from '../report.js';
 import { todayBR } from '../metrics.js';
 
 const METRICS = ['cpl', 'cpa', 'followers', 'reach'];
+const PAY_MODES = ['detect', 'card', 'manual'];
 const RESULT_TYPES = ['auto', 'lead', 'message', 'purchase', 'click', 'lpv'];
 const r = Router();
 const staff = requireRole('admin', 'manager');
@@ -114,7 +115,7 @@ function listClients() {
     `SELECT c.id, c.name, c.manager_id, c.monthly_budget, c.notes, c.active, u.name manager
        FROM clients c LEFT JOIN users u ON u.id = c.manager_id ORDER BY c.name COLLATE NOCASE`,
   );
-  const chs = all('SELECT id, client_id, platform, account_id, metric, result_type, target, active FROM channels');
+  const chs = all('SELECT id, client_id, platform, account_id, metric, result_type, pay_mode, target, active FROM channels');
   return clients.map((c) => ({ ...c, channels: chs.filter((x) => x.client_id === c.id) }));
 }
 
@@ -136,7 +137,7 @@ function validateClient(body) {
     if (c.platform === 'google' && ['followers', 'reach'].includes(c.metric)) return { error: 'Seguidores e Alcance só existem no Meta Ads.' };
     const target = Number(c.target);
     if (!Number.isFinite(target) || target < 0 || target > 1e6) return { error: 'Meta inválida.' };
-    channels.push({ platform: c.platform, account_id, metric: METRICS.includes(c.metric) ? c.metric : 'cpl', result_type: RESULT_TYPES.includes(c.result_type) ? c.result_type : 'auto', target, active: c.active === false ? 0 : 1 });
+    channels.push({ platform: c.platform, account_id, metric: METRICS.includes(c.metric) ? c.metric : 'cpl', result_type: RESULT_TYPES.includes(c.result_type) ? c.result_type : 'auto', pay_mode: PAY_MODES.includes(c.pay_mode) ? c.pay_mode : 'detect', target, active: c.active === false ? 0 : 1 });
   }
   if (!channels.length) return { error: 'Ative pelo menos um canal (Google ou Meta).' };
   return { name, manager_id, budget, notes, channels };
@@ -146,9 +147,9 @@ function saveChannels(clientId, channels) {
   const keep = channels.map((c) => c.platform);
   run(`DELETE FROM channels WHERE client_id = ? AND platform NOT IN (${keep.map(() => '?').join(',')})`, clientId, ...keep);
   for (const c of channels) {
-    run(`INSERT INTO channels (client_id, platform, account_id, metric, result_type, target, active) VALUES (?,?,?,?,?,?,?)
-         ON CONFLICT(client_id, platform) DO UPDATE SET account_id=excluded.account_id, metric=excluded.metric, result_type=excluded.result_type, target=excluded.target, active=excluded.active`,
-    clientId, c.platform, c.account_id, c.metric, c.result_type, c.target, c.active);
+    run(`INSERT INTO channels (client_id, platform, account_id, metric, result_type, pay_mode, target, active) VALUES (?,?,?,?,?,?,?,?)
+         ON CONFLICT(client_id, platform) DO UPDATE SET account_id=excluded.account_id, metric=excluded.metric, result_type=excluded.result_type, pay_mode=excluded.pay_mode, target=excluded.target, active=excluded.active`,
+    clientId, c.platform, c.account_id, c.metric, c.result_type, c.pay_mode, c.target, c.active);
   }
 }
 
