@@ -81,7 +81,12 @@ function paint(root) {
   let list = filtered();
   const tv = document.body.classList.contains('tv');
   if (tv) {
-    const per = Math.max(6, Math.floor((innerWidth / 400)) * Math.max(1, Math.floor((innerHeight - 220) / 330)));
+    // grade que cabe inteira na tela: ~300px por coluna e ~220px por linha (cards compactos)
+    const cols = Math.min(8, Math.max(3, Math.floor(innerWidth / 300)));
+    const rows = Math.max(2, Math.floor((innerHeight - 130) / 220));
+    const cardsEl = root.querySelector('#cards');
+    cardsEl.style.setProperty('--tvc', cols); cardsEl.style.setProperty('--tvr', rows);
+    const per = cols * rows;
     const pages = Math.max(1, Math.ceil(list.length / per));
     tvPage %= pages;
     list = list.slice(tvPage * per, tvPage * per + per);
