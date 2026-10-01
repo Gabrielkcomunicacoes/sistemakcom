@@ -60,17 +60,21 @@ async function fetchMeta(ch, from, to) {
     };
   });
 
-  let balance = null, problem = null;
+  let balance = null, problem = null, funding = null;
   const acc = await http(
     `https://graph.facebook.com/${META_V}/${id}?fields=account_status,is_prepay_account,funding_source_details,spend_cap,amount_spent`, { headers },
   );
   if (acc.account_status && acc.account_status !== 1) problem = 'Conta Meta não está ativa';
   const display = acc.funding_source_details?.display_string || '';
+  // forma de pagamento: pré-pago (recarga manual), cartão (cobrança automática) ou outro meio automático
+  if (acc.is_prepay_account) funding = 'prepaid';
+  else if (acc.funding_source_details?.type === 1) funding = 'card';
+  else if (acc.funding_source_details) funding = 'auto';
   const m = display.match(/(\d{1,3}(?:\.\d{3})*,\d{2})/);
   if (acc.is_prepay_account && m) balance = parseFloat(m[1].replace(/\./g, '').replace(',', '.'));
   // conta com teto de gastos: saldo = teto − gasto (valores vêm em centavos)
   else if (+acc.spend_cap > 0) balance = Math.max(0, (+acc.spend_cap - (+acc.amount_spent || 0)) / 100);
-  return { days, balance, problem };
+  return { days, balance, problem, funding };
 }
 
 /* ------------------------------ Google ------------------------------ */
@@ -111,14 +115,22 @@ async function fetchGoogle(ch, from, to) {
   const rows = await gaql(cid, `SELECT segments.date, metrics.cost_micros, metrics.conversions, metrics.impressions, metrics.clicks FROM customer WHERE segments.date BETWEEN '${from}' AND '${to}'`);
   const days = rows.map((r) => ({ date: r.segments.date, spend: (+r.metrics.costMicros || 0) / 1e6, conv: +r.metrics.conversions || 0, impressions: +r.metrics.impressions || 0, clicks: +r.metrics.clicks || 0, reach: 0 }));
 
-  let balance = null;
+  let balance = null, funding = null;
   try {
     const b = await gaql(cid, "SELECT account_budget.approved_spending_limit_micros, account_budget.amount_served_micros FROM account_budget WHERE account_budget.status = 'APPROVED'");
     if (b.length && b.every((x) => x.accountBudget?.approvedSpendingLimitMicros)) {
       balance = b.reduce((s, x) => s + (+x.accountBudget.approvedSpendingLimitMicros - +(x.accountBudget.amountServedMicros || 0)), 0) / 1e6;
     }
+    if (b.length) funding = 'prepaid';
   } catch { /* contas com faturamento mensal não têm account_budget */ }
-  return { days, balance, problem: null };
+  // sem orçamento de conta, mas com cobrança aprovada: pagamento automático (cartão ou faturamento mensal)
+  if (!funding) {
+    try {
+      const bs = await gaql(cid, "SELECT billing_setup.status FROM billing_setup WHERE billing_setup.status = 'APPROVED'");
+      if (bs.length) funding = 'auto';
+    } catch { /* sem permissão de leitura da cobrança: deixa indefinido */ }
+  }
+  return { days, balance, problem: null, funding };
 }
 
 /* ------------------------------ Orquestração ------------------------------ */
@@ -134,9 +146,9 @@ async function syncChannel(ch) {
                impressions=excluded.impressions, clicks=excluded.clicks, reach=excluded.reach`,
         ch.id, d.date, d.spend, d.conv, d.impressions ?? 0, d.clicks ?? 0, d.reach ?? 0);
       }
-      run(`INSERT INTO channel_status (channel_id,balance,last_sync,error) VALUES (?,?,unixepoch(),?)
-           ON CONFLICT(channel_id) DO UPDATE SET balance=excluded.balance, last_sync=excluded.last_sync, error=excluded.error`,
-      ch.id, res.balance, res.problem);
+      run(`INSERT INTO channel_status (channel_id,balance,last_sync,error,funding) VALUES (?,?,unixepoch(),?,?)
+           ON CONFLICT(channel_id) DO UPDATE SET balance=excluded.balance, last_sync=excluded.last_sync, error=excluded.error, funding=excluded.funding`,
+      ch.id, res.balance, res.problem, res.funding ?? null);
     });
     return true;
   } catch (e) {

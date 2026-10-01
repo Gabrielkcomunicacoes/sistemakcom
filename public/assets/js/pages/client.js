@@ -26,7 +26,7 @@ function platformBlock(p) {
     ${reach ? '' : row('Custo por resultado', t.cpr != null ? brl(t.cpr) : '—')}
     ${row('Alcance', int(t.reach))}${row('Impressões', int(t.impressions))}${row('Cliques', int(t.clicks))}
     ${row('CTR', pct(t.ctr))}${row('CPC', t.cpc != null ? brl(t.cpc) : '—')}${row('CPM', t.cpm != null ? brl(t.cpm) : '—')}
-    ${row('Saldo', p.balance != null ? brl(p.balance) : '—')}
+    ${row('Saldo', p.funding === 'card' ? '💳 Cartão automático' : p.funding === 'auto' ? 'Pagamento automático' : p.balance != null ? brl(p.balance) : '—')}
     ${p.error ? `<div class="foot" style="color:var(--warn);margin-top:8px">⚠ ${esc(p.error)}</div>` : ''}
   </section>`;
 }

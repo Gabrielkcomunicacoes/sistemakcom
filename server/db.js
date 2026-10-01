@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS report_links (
 `);
 
 try { db.exec("ALTER TABLE channels ADD COLUMN result_type TEXT NOT NULL DEFAULT 'auto'"); } catch { /* coluna já existe */ }
+try { db.exec('ALTER TABLE channel_status ADD COLUMN funding TEXT'); } catch { /* coluna já existe */ }
 
 for (const col of ['impressions', 'clicks', 'reach']) {
   try { db.exec(`ALTER TABLE metrics_daily ADD COLUMN ${col} REAL NOT NULL DEFAULT 0`); } catch { /* já existe */ }

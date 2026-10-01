@@ -29,7 +29,7 @@ function channelHtml(ch) {
     </div>
     <div class="bar" title="Custo em relação à meta"><i style="width:${pct}%"></i></div>
     <div class="foot"><span>Gasto <b>${brl(ch.spend)}</b></span><span>${reach ? 'Alcance' : 'Conv.'} <b>${num(ch.conversions)}</b></span>
-      <span>Saldo <b>${ch.balance != null ? brl(ch.balance) : '—'}</b></span>${days}</div>
+      ${ch.funding === 'card' || ch.funding === 'auto' ? `<span class="badge" title="Pagamento automático: sem recarga manual">${ch.funding === 'card' ? '💳 Cartão automático' : 'Pagamento automático'}</span>` : `<span>Saldo <b>${ch.balance != null ? brl(ch.balance) : '—'}</b></span>${days}`}</div>
     <div class="foot"><div class="trends" title="Variação do custo vs. meta">
       <span class="muted">7D</span>${trend(ch.trends[7], reach)}<span class="muted">14D</span>${trend(ch.trends[14], reach)}<span class="muted">30D</span>${trend(ch.trends[30], reach)}</div>
       ${sparkline(ch.spark, ch.platform === 'google' ? 'var(--google)' : 'var(--meta)')}</div>

@@ -47,7 +47,7 @@ export function buildDashboard({ from, to }) {
   const today = todayBR();
   const channels = all(
     `SELECT ch.*, c.name AS client_name, c.manager_id, c.monthly_budget, u.name AS manager_name,
-            cs.balance, cs.last_sync, cs.error
+            cs.balance, cs.last_sync, cs.error, cs.funding
        FROM channels ch
        JOIN clients c ON c.id = ch.client_id
        LEFT JOIN users u ON u.id = c.manager_id
@@ -70,6 +70,9 @@ export function buildDashboard({ from, to }) {
     const range = sum(days, from, to);
     const t = sum(days, today, today);
     const avg7 = sum(days, addDays(today, -6), today).spend / 7;
+    // cartão/pagamento automático: não há recarga manual, então não há saldo a monitorar
+    const autoPay = ch.funding === 'card' || ch.funding === 'auto';
+    if (autoPay) ch.balance = null;
     const daysLeft = ch.balance != null && avg7 > 0 ? ch.balance / avg7 : null;
     const isReach = ch.metric === 'reach';
     const nDays = Math.round((Date.parse(to) - Date.parse(from)) / 864e5) + 1;
@@ -99,7 +102,7 @@ export function buildDashboard({ from, to }) {
       id: ch.id, platform: ch.platform, metric: ch.metric, target: ch.target,
       spend: round(range.spend), conversions: round(range.conv, 1), cpr: round(cpr),
       todaySpend: round(t.spend), todayConv: round(t.conv, 1),
-      balance: round(ch.balance), daysLeft: round(daysLeft, 1), trends, spark,
+      balance: round(ch.balance), funding: ch.funding ?? null, daysLeft: round(daysLeft, 1), trends, spark,
       monthSpend: round(month.spend), lastSync: ch.last_sync, error: ch.error, status, reasons,
       higherBetter: isReach, _avg7: avg7, _reach3: r3.conv / 3,
       depletionDate: daysLeft != null ? addDays(today, Math.max(0, Math.floor(daysLeft))) : null,
@@ -167,7 +170,7 @@ export function clientSeries(clientId, days) {
 /** Detalhe de um cliente no período: totais, blocos por plataforma e séries diárias. */
 export function clientDetail(clientId, { from, to }, metricFilter = '') {
   const chs = all(
-    `SELECT ch.*, cs.balance, cs.error FROM channels ch LEFT JOIN channel_status cs ON cs.channel_id = ch.id
+    `SELECT ch.*, cs.balance, cs.error, cs.funding FROM channels ch LEFT JOIN channel_status cs ON cs.channel_id = ch.id
       WHERE ch.client_id = ? AND ch.active = 1 ORDER BY ch.platform`, clientId,
   ).filter((c) => !metricFilter || c.metric === metricFilter);
   const dates = [];
@@ -188,7 +191,7 @@ export function clientDetail(clientId, { from, to }, metricFilter = '') {
     for (const k of ['spend', 'impressions', 'clicks', 'reach']) tot[k] += a[k];
     tot.conv += results;
     return {
-      id: ch.id, platform: ch.platform, metric: ch.metric, target: ch.target, balance: round(ch.balance), error: ch.error,
+      id: ch.id, platform: ch.platform, metric: ch.metric, target: ch.target, balance: ch.funding === 'card' || ch.funding === 'auto' ? null : round(ch.balance), funding: ch.funding ?? null, error: ch.error,
       totals: {
         spend: round(a.spend), results: round(results, 1), reach: round(a.reach, 0), impressions: round(a.impressions, 0), clicks: round(a.clicks, 0),
         cpr: !isReach && results > 0 ? round(a.spend / results) : null,
