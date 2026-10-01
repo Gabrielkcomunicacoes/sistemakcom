@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Entrar · KCOM Monitor</title>
+  <link rel="icon" type="image/png" href="/images/logo-branca.png">
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/assets/theme.js"></script>
+</head>
+<body>
+  <div class="login-wrap">
+    <main class="login">
+      <div class="brand"><img class="logo" src="/images/logo-branca.png" alt="KCOM" width="150" height="61"></div>
+      <h1>Bem-vindo de volta</h1>
+      <p class="sub">Acesse o painel de saldos e campanhas</p>
+      <form id="form" autocomplete="on" novalidate>
+        <div id="err" class="err hidden" role="alert"></div>
+        <div class="field"><label for="email">E-mail</label><input id="email" type="email" autocomplete="username" required maxlength="254" autofocus></div>
+        <div class="field"><label for="password">Senha</label>
+          <div class="pw-wrap"><input id="password" type="password" autocomplete="current-password" required maxlength="200">
+            <button type="button" id="toggle" aria-label="Mostrar senha" tabindex="-1">👁</button></div></div>
+        <div class="field hidden" id="codeField"><label for="code">Código do autenticador (2FA)</label>
+          <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000"></div>
+        <button class="btn primary" id="go" type="submit">Entrar</button>
+      </form>
+      <div class="secure">🔒 Conexão protegida · sessão criptografada</div>
+    </main>
+  </div>
+  <script type="module" src="/assets/login.js"></script>
+</body>
+</html>

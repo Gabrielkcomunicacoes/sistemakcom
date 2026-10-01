@@ -1,0 +1,20 @@
+{
+  "name": "kcom-saldos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "KCOM Monitor - painel de saldos e performance de campanhas (Google Ads / Meta Ads)",
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "setup": "node scripts/setup.js",
+    "start": "node --no-warnings --env-file-if-exists=.env server/index.js",
+    "dev": "node --no-warnings --watch --env-file-if-exists=.env server/index.js",
+    "seed:demo": "node --no-warnings --env-file-if-exists=.env scripts/seed-demo.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "qrcode": "^1.5.4"
+  }
+}
