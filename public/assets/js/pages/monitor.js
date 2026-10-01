@@ -7,7 +7,21 @@ const RANK = { critical: 0, warning: 1, ok: 2, idle: 3 };
 const RANGES = [['today', 'Hoje'], ['yesterday', 'Ontem'], ['7', '7 dias'], ['14', '14 dias'], ['30', '30 dias'], ['custom', 'Personalizado']];
 
 const prefs = { range: 'today', from: '', to: '', google: false, meta: false, status: '', metric: '', q: '', mine: false };
-let timer, data, tvPage = 0, tvPages = 1;
+let timer, data, tvPage = 0, tvPages = 1, lastKey = '';
+const lastKpi = {};
+const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** Anima o número do valor anterior até o novo (ease-out); sem animação se o usuário preferir menos movimento. */
+function countUp(el, to, fmt, from = 0) {
+  if (to == null || reduceMotion() || from === to) { el.textContent = fmt(to); return; }
+  const t0 = performance.now(), dur = 700;
+  const step = (now) => {
+    const p = Math.min(1, (now - t0) / dur), e = 1 - (1 - p) ** 3;
+    el.textContent = fmt(from + (to - from) * e);
+    if (p < 1 && el.isConnected) requestAnimationFrame(step); else el.textContent = fmt(to);
+  };
+  requestAnimationFrame(step);
+}
 
 function trend(v, higherBetter) {
   if (v == null) return '<span class="trend">—</span>';
@@ -73,11 +87,13 @@ function filtered() {
 function paint(root) {
   const t = data.totals;
   root.querySelector('#kpis').innerHTML = `
-    <div class="kpi" style="--k:var(--accent)"><small>Investimento · ${esc(data.range)}</small><strong>${brl(t.spend)}</strong></div>
-    <div class="kpi" style="--k:var(--ok)"><small>Conversões</small><strong>${num(t.conversions)}</strong></div>
-    <div class="kpi" style="--k:var(--accent2)"><small>Custo por resultado</small><strong>${brl(t.cpr)}</strong></div>
-    <div class="kpi" style="--k:var(--crit)"><small>Clientes críticos</small><strong>${t.critical}</strong><em>${t.warning} em atenção</em></div>
-    <div class="kpi" style="--k:var(--ok)"><small>Saudáveis</small><strong>${t.ok}</strong><em>de ${data.clients.length}</em></div>`;
+    <div class="kpi" style="--k:var(--accent);--i:0"><small>Investimento · ${esc(data.range)}</small><strong data-k="spend"></strong></div>
+    <div class="kpi" style="--k:var(--ok);--i:1"><small>Conversões</small><strong data-k="conv"></strong></div>
+    <div class="kpi" style="--k:var(--accent2);--i:2"><small>Custo por resultado</small><strong data-k="cpr"></strong></div>
+    <div class="kpi" style="--k:var(--crit);--i:3"><small>Clientes críticos</small><strong data-k="crit"></strong><em>${t.warning} em atenção</em></div>
+    <div class="kpi" style="--k:var(--ok);--i:4"><small>Saudáveis</small><strong data-k="ok"></strong><em>de ${data.clients.length}</em></div>`;
+  const kv = { spend: [t.spend, brl], conv: [t.conversions, num], cpr: [t.cpr, brl], crit: [t.critical, (v) => String(Math.round(v))], ok: [t.ok, (v) => String(Math.round(v))] };
+  for (const [k, [v, fmt]] of Object.entries(kv)) { countUp(root.querySelector(`[data-k="${k}"]`), v, fmt, lastKpi[k] ?? 0); lastKpi[k] = v ?? 0; }
   let list = filtered();
   const tv = document.body.classList.contains('tv');
   if (tv) {
@@ -94,7 +110,11 @@ function paint(root) {
     root.querySelector('#tvinfo').textContent = pages > 1 ? `Página ${tvPage + 1}/${pages}` : '';
   }
   for (const id of ['tvprev', 'tvnext']) root.querySelector('#' + id).classList.toggle('hidden', !(tv && tvPages > 1));
-  root.querySelector('#cards').innerHTML = list.length ? list.map(cardHtml).join('') : '<div class="empty" style="grid-column:1/-1">Nenhum cliente encontrado com esses filtros.</div>';
+  // a animação de entrada só toca quando a lista de cards muda (filtro, página); a atualização de 60 s não reanima
+  const key = list.map((c) => c.id).join(',') + '|' + tvPage;
+  const cardsEl2 = root.querySelector('#cards');
+  cardsEl2.classList.toggle('enter', key !== lastKey); lastKey = key;
+  cardsEl2.innerHTML = list.length ? list.map((c, i) => cardHtml(c).replace('<article class="card', `<article style="--i:${Math.min(i, 24)}" class="card`)).join('') : '<div class="empty" style="grid-column:1/-1">Nenhum cliente encontrado com esses filtros.</div>';
   root.querySelector('#upd').innerHTML = `${icon('refresh')} atualizado ${ago(Math.floor(data.generatedAt / 1000))}`;
 }
 
