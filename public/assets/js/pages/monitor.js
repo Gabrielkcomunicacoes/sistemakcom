@@ -7,7 +7,7 @@ const RANK = { critical: 0, warning: 1, ok: 2, idle: 3 };
 const RANGES = [['today', 'Hoje'], ['yesterday', 'Ontem'], ['7', '7 dias'], ['14', '14 dias'], ['30', '30 dias'], ['custom', 'Personalizado']];
 
 const prefs = { range: 'today', from: '', to: '', platform: '', status: '', metric: '', q: '', mine: false };
-let timer, tvTimer, data, tvPage = 0;
+let timer, data, tvPage = 0, tvPages = 1;
 
 function trend(v, higherBetter) {
   if (v == null) return '<span class="trend">—</span>';
@@ -88,10 +88,12 @@ function paint(root) {
     cardsEl.style.setProperty('--tvc', cols); cardsEl.style.setProperty('--tvr', rows);
     const per = cols * rows;
     const pages = Math.max(1, Math.ceil(list.length / per));
-    tvPage %= pages;
+    tvPage = Math.min(Math.max(tvPage, 0), pages - 1);
+    tvPages = pages;
     list = list.slice(tvPage * per, tvPage * per + per);
     root.querySelector('#tvinfo').textContent = pages > 1 ? `Página ${tvPage + 1}/${pages}` : '';
   }
+  for (const id of ['tvprev', 'tvnext']) root.querySelector('#' + id).classList.toggle('hidden', !(tv && tvPages > 1));
   root.querySelector('#cards').innerHTML = list.length ? list.map(cardHtml).join('') : '<div class="empty" style="grid-column:1/-1">Nenhum cliente encontrado com esses filtros.</div>';
   root.querySelector('#upd').innerHTML = `${icon('refresh')} atualizado ${ago(Math.floor(data.generatedAt / 1000))}`;
 }
@@ -107,11 +109,9 @@ async function load(root, quiet) {
 
 function setTv(root, on) {
   document.body.classList.toggle('tv', on);
-  clearInterval(tvTimer);
-  if (on) {
-    document.documentElement.requestFullscreen?.().catch(() => {});
-    tvTimer = setInterval(() => { tvPage++; paint(root); }, 20000);
-  } else if (document.fullscreenElement) document.exitFullscreen?.();
+  tvPage = 0; // o modo TV sempre começa (e fica) na primeira página; a troca é manual
+  if (on) document.documentElement.requestFullscreen?.().catch(() => {});
+  else if (document.fullscreenElement) document.exitFullscreen?.();
   root.querySelector('#tvexit').classList.toggle('hidden', !on);
   if (data) paint(root);
 }
@@ -136,6 +136,8 @@ export default {
         <label class="check" style="padding:7px 12px"><input type="checkbox" id="mine" ${prefs.mine ? 'checked' : ''}> Meus clientes</label>
       </div>
       <div class="cards" id="cards">${'<div class="skeleton"></div>'.repeat(6)}</div>
+      <button class="tv-nav prev hidden" id="tvprev" aria-label="Página anterior">‹</button>
+      <button class="tv-nav next hidden" id="tvnext" aria-label="Próxima página">›</button>
       <button class="btn primary tv-exit hidden" id="tvexit">${icon('x')} Sair do modo TV</button>`;
 
     root.querySelector('#platform').value = prefs.platform;
@@ -161,6 +163,13 @@ export default {
     root.querySelector('#cards').onkeydown = (e) => { if (e.key === 'Enter') open(e); };
     root.querySelector('#tv').onclick = () => setTv(root, true);
     root.querySelector('#tvexit').onclick = () => setTv(root, false);
+    const go = (d) => { tvPage = (tvPage + d + tvPages) % tvPages; paint(root); };
+    root.querySelector('#tvprev').onclick = () => go(-1);
+    root.querySelector('#tvnext').onclick = () => go(1);
+    document.addEventListener('keydown', this._kd = (e) => {
+      if (!document.body.classList.contains('tv')) return;
+      if (e.key === 'ArrowLeft') go(-1); else if (e.key === 'ArrowRight') go(1);
+    });
     root.querySelector('#sync')?.addEventListener('click', async (e) => {
       e.currentTarget.disabled = true;
       try {
@@ -175,8 +184,9 @@ export default {
     timer = setInterval(() => load(root, true), 60000);
   },
   destroy() {
-    clearInterval(timer); clearInterval(tvTimer);
+    clearInterval(timer);
     document.body.classList.remove('tv');
     if (this._fs) document.removeEventListener('fullscreenchange', this._fs);
+    if (this._kd) document.removeEventListener('keydown', this._kd);
   },
 };
