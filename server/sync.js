@@ -117,9 +117,20 @@ async function fetchGoogle(ch, from, to) {
 
   let balance = null, funding = null;
   try {
-    const b = await gaql(cid, "SELECT account_budget.approved_spending_limit_type, account_budget.approved_spending_limit_micros, account_budget.amount_served_micros FROM account_budget WHERE account_budget.status = 'APPROVED'");
-    if (b.length && b.every((x) => x.accountBudget?.approvedSpendingLimitMicros)) {
-      balance = b.reduce((s, x) => s + (+x.accountBudget.approvedSpendingLimitMicros - +(x.accountBudget.amountServedMicros || 0)), 0) / 1e6;
+    const all = await gaql(cid, "SELECT account_budget.approved_spending_limit_type, account_budget.approved_spending_limit_micros, account_budget.adjusted_spending_limit_micros, account_budget.amount_served_micros, account_budget.approved_start_date_time, account_budget.approved_end_date_time FROM account_budget WHERE account_budget.status = 'APPROVED'");
+    // só o orçamento vigente hoje: orçamentos antigos/encerrados continuam APPROVED e distorciam o saldo
+    const now = new Date().toISOString().slice(0, 10);
+    const cur = all.filter((x) => {
+      const a = x.accountBudget || {};
+      const start = (a.approvedStartDateTime || '').slice(0, 10);
+      const end = (a.approvedEndDateTime || '').slice(0, 10);
+      return (!start || start <= now) && (!end || end >= now);
+    });
+    const b = cur.length ? cur : all;
+    const limitOf = (x) => +(x.accountBudget.adjustedSpendingLimitMicros || x.accountBudget.approvedSpendingLimitMicros || 0);
+    if (b.length && b.every((x) => limitOf(x))) {
+      const raw = b.reduce((s, x) => s + (limitOf(x) - +(x.accountBudget.amountServedMicros || 0)), 0) / 1e6;
+      balance = Math.max(0, raw);
     }
     // orçamento ilimitado = sem recarga manual (cartão/faturamento); com teto = recarga manual
     if (b.length) funding = b.some((x) => x.accountBudget?.approvedSpendingLimitType === 'INFINITE') ? 'auto' : 'prepaid';
