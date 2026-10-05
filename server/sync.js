@@ -236,3 +236,49 @@ export async function fetchCampaigns(ch, from, to) {
   }
   return [...acc.values()];
 }
+
+/* ------------------------------ Criativos (anúncios) ativos (ao vivo) ------------------------------ */
+/** Retorna [{name, campaign, image, spend, results, impressions, clicks}] dos anúncios ativos do canal. */
+export async function fetchAds(ch, from, to) {
+  if (!REAL_ID.test(ch.account_id)) return [];
+  if (ch.platform === 'meta') {
+    const token = getSetting('meta_access_token');
+    if (!token) throw new Error('Meta Access Token não configurado');
+    const id = `act_${ch.account_id.replace(/^act_/, '')}`;
+    const headers = { authorization: `Bearer ${token}` };
+    const base = `https://graph.facebook.com/${META_V}/${id}`;
+    const list = await http(`${base}/ads?${new URLSearchParams({
+      fields: 'name,campaign{name},creative{thumbnail_url,image_url}', effective_status: '["ACTIVE"]', limit: '100',
+    })}`, { headers });
+    const ins = await http(`${base}/insights?${new URLSearchParams({
+      level: 'ad', fields: 'ad_id,spend,impressions,clicks,reach,actions', limit: '300',
+      time_range: JSON.stringify({ since: from, until: to }),
+    })}`, { headers });
+    const byId = new Map((ins.data ?? []).map((r) => [r.ad_id, r]));
+    const groups = META_GROUPS[ch.result_type] && ['cpl', 'cpa'].includes(ch.metric) ? [ch.result_type] : (AUTO[ch.metric] ?? []);
+    return (list.data ?? []).map((a) => {
+      const r = byId.get(a.id) ?? {};
+      const results = ch.metric === 'reach' ? +r.reach || 0 : groups.reduce((sum, g) => {
+        const v = (r.actions ?? []).filter((x) => META_GROUPS[g].includes(x.action_type)).map((x) => +x.value);
+        return sum + (v.length ? Math.max(...v) : 0);
+      }, 0);
+      return {
+        name: a.name, campaign: a.campaign?.name ?? '', image: a.creative?.thumbnail_url || a.creative?.image_url || null,
+        spend: +r.spend || 0, results, impressions: +r.impressions || 0, clicks: +r.clicks || 0,
+      };
+    });
+  }
+  if (![from, to].every(isDate)) throw new Error('intervalo inválido');
+  const cid = ch.account_id.replace(/\D/g, '');
+  const rows = await gaql(cid, `SELECT ad_group_ad.ad.id, ad_group_ad.ad.name, ad_group_ad.ad.responsive_search_ad.headlines, ad_group_ad.ad.responsive_display_ad.headlines, campaign.name, metrics.cost_micros, metrics.conversions, metrics.impressions, metrics.clicks FROM ad_group_ad WHERE ad_group_ad.status = 'ENABLED' AND ad_group.status = 'ENABLED' AND campaign.status = 'ENABLED' AND segments.date BETWEEN '${from}' AND '${to}'`);
+  const acc = new Map();
+  for (const r of rows) {
+    const ad = r.adGroupAd?.ad ?? {};
+    const heads = (ad.responsiveSearchAd?.headlines ?? ad.responsiveDisplayAd?.headlines ?? []).map((h) => h.text).filter(Boolean).slice(0, 2).join(' | ');
+    const a = acc.get(ad.id) ?? { name: ad.name || heads || `Anúncio ${ad.id}`, campaign: r.campaign?.name ?? '', image: null, spend: 0, results: 0, impressions: 0, clicks: 0 };
+    a.spend += (+r.metrics.costMicros || 0) / 1e6; a.results += +r.metrics.conversions || 0;
+    a.impressions += +r.metrics.impressions || 0; a.clicks += +r.metrics.clicks || 0;
+    acc.set(ad.id, a);
+  }
+  return [...acc.values()];
+}

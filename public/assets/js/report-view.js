@@ -68,3 +68,25 @@ export function reportHtml(r) {
           <td>${num(h.results)}</td><td>${h.cpr != null ? brl(h.cpr) : '—'}</td></tr>`).join('')}
       </tbody></table></div></section>`;
 }
+
+const resLabel = (metric) => (metric === 'reach' ? 'Alcance' : 'Resultados');
+
+/** Campanhas e criativos ativos; `groups` vem de /r/:token/live. */
+export function liveHtml(groups, label) {
+  const body = groups.map((g) => {
+    const head = `<h3 class="live-sub" style="color:${COLOR[g.platform]}">${PLAT[g.platform]}</h3>`;
+    if (g.error) return `${head}<div class="muted">${esc(g.error)}</div>`;
+    if (!g.campaigns.length && !g.ads.length) return `${head}<div class="muted">Nenhuma campanha ativa.</div>`;
+    const campaigns = g.campaigns.length ? `<div class="scroll-x"><table class="table compact"><thead><tr><th>Campanha ativa</th><th>Orç./dia</th><th>Investimento</th><th>${resLabel(g.metric)}</th><th>Cliques</th></tr></thead><tbody>
+      ${g.campaigns.map((c) => `<tr><td>${esc(c.name)}</td><td>${c.budget != null ? brl(c.budget) : '—'}</td><td>${brl(c.spend)}</td><td>${num(c.results)}</td><td>${int(c.clicks)}</td></tr>`).join('')}
+      </tbody></table></div>` : '';
+    const ads = g.ads.length ? `<div class="live-sub muted">Criativos ativos (${g.ads.length})</div><div class="creatives">
+      ${g.ads.map((a) => `<div class="creative">${a.image ? `<img src="${esc(a.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<div class="noimg">sem prévia</div>'}
+        <div class="cbody"><b>${esc(a.name)}</b><span class="muted">${esc(a.campaign)}</span>
+        <div class="kv"><span>Investimento</span><b>${brl(a.spend)}</b></div>
+        <div class="kv"><span>${resLabel(g.metric)}</span><b>${num(a.results)}</b></div>
+        <div class="kv"><span>Cliques</span><b>${int(a.clicks)}</b></div></div></div>`).join('')}</div>` : '';
+    return head + campaigns + ads;
+  }).join('');
+  return `<h2>Campanhas e criativos ativos <span class="muted" style="font-weight:400">· ${esc(label)}</span></h2>${body}`;
+}

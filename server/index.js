@@ -5,11 +5,12 @@ import { fileURLToPath } from 'node:url';
 import rateLimit from 'express-rate-limit';
 import { assertMasterKey, sha256 } from './security.js';
 import { activeLink, monthReport, isMonth } from './report.js';
-import { todayBR } from './metrics.js';
+import { todayBR, isDate } from './metrics.js';
+import { all } from './db.js';
 import { attachSession, csrfGuard, requireAuth, purgeExpired, SECURE } from './session.js';
 import authRoutes from './routes/auth.js';
 import apiRoutes from './routes/api.js';
-import { syncAll } from './sync.js';
+import { syncAll, fetchCampaigns, fetchAds } from './sync.js';
 import { evaluateAlerts } from './alerts.js';
 
 assertMasterKey();
@@ -27,7 +28,7 @@ app.use(helmet({
       scriptSrc: ["'self'"],
       styleSrc: ["'self'"],
       styleSrcAttr: ["'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:'],
+      imgSrc: ["'self'", 'data:', 'https://*.fbcdn.net', 'https://*.cdninstagram.com'], // miniaturas dos criativos da Meta
       connectSrc: ["'self'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
@@ -64,6 +65,33 @@ app.get('/r/:token/data', reportLimit, noIndex, (req, res) => {
   if (!link) return res.status(404).json({ error: 'Link inválido ou expirado.' });
   const month = isMonth(req.query.month) ? req.query.month : todayBR().slice(0, 7);
   res.json(monthReport(link.client_id, month));
+});
+
+/* Campanhas e criativos ativos (consulta ao vivo, com cache curto para não expor as APIs a acessos públicos) */
+const liveCache = new Map();
+app.get('/r/:token/live', reportLimit, noIndex, async (req, res) => {
+  const link = /^[A-Za-z0-9_-]{20,64}$/.test(req.params.token) ? activeLink(sha256(req.params.token)) : null;
+  if (!link) return res.status(404).json({ error: 'Link inválido ou expirado.' });
+  const today = todayBR();
+  const from = req.query.from ?? today;
+  const to = req.query.to ?? from;
+  if (!isDate(from) || !isDate(to) || from > to || to > today || (Date.parse(to) - Date.parse(from)) / 864e5 > 92) {
+    return res.status(400).json({ error: 'Período inválido.' });
+  }
+  const key = `${link.client_id}|${from}|${to}`;
+  const hit = liveCache.get(key);
+  if (hit && hit.exp > Date.now()) return res.json(hit.data);
+  const chs = all('SELECT * FROM channels WHERE client_id = ? AND active = 1 ORDER BY platform', link.client_id);
+  const data = await Promise.all(chs.map(async (ch) => {
+    const out = { platform: ch.platform, metric: ch.metric, campaigns: [], ads: [] };
+    try {
+      [out.campaigns, out.ads] = await Promise.all([fetchCampaigns(ch, from, to), fetchAds(ch, from, to)]);
+    } catch (e) { console.error('[live]', ch.id, e.message); out.error = 'Não foi possível carregar os dados desta plataforma agora.'; }
+    return out;
+  }));
+  if (liveCache.size > 200) liveCache.clear();
+  if (!data.some((d) => d.error)) liveCache.set(key, { exp: Date.now() + 5 * 60_000, data });
+  res.json(data);
 });
 
 /* Páginas: o shell do painel só é entregue para sessões válidas */
