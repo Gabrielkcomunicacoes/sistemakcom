@@ -1,4 +1,4 @@
-import { reportHtml, liveHtml } from './js/report-view.js';
+import { reportHtml, liveHtml } from './js/report-view.js?v=2';
 import { esc } from './js/core.js';
 
 const token = location.pathname.split('/')[2];

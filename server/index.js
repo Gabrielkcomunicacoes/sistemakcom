@@ -98,7 +98,7 @@ app.get('/r/:token/live', reportLimit, noIndex, async (req, res) => {
 app.get('/', (req, res) => (req.user ? res.sendFile(path.join(pub, 'app.html')) : res.redirect('/login')));
 app.get('/login', (req, res) => (req.user ? res.redirect('/') : res.sendFile(path.join(pub, 'login.html'))));
 app.use('/images', express.static(path.join(pub, 'images'), { maxAge: '1d', index: false, dotfiles: 'ignore' }));
-app.use('/assets', express.static(path.join(pub, 'assets'), { maxAge: '1h', index: false, dotfiles: 'ignore' }));
+app.use('/assets', express.static(path.join(pub, 'assets'), { maxAge: 0, index: false, dotfiles: 'ignore' }));
 app.use((_req, res) => res.status(404).send('Não encontrado'));
 
 app.use((err, _req, res, _next) => {
