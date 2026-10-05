@@ -248,7 +248,7 @@ export async function fetchAds(ch, from, to) {
     const headers = { authorization: `Bearer ${token}` };
     const base = `https://graph.facebook.com/${META_V}/${id}`;
     const list = await http(`${base}/ads?${new URLSearchParams({
-      fields: 'name,campaign{name},creative{thumbnail_url,image_url}', effective_status: '["ACTIVE"]', limit: '100',
+      fields: 'name,campaign{name},creative.thumbnail_width(720).thumbnail_height(720){thumbnail_url,image_url}', effective_status: '["ACTIVE"]', limit: '100',
     })}`, { headers });
     const ins = await http(`${base}/insights?${new URLSearchParams({
       level: 'ad', fields: 'ad_id,spend,impressions,clicks,reach,actions', limit: '300',
