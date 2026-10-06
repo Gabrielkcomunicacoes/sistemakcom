@@ -7,11 +7,13 @@ import { syncAll, isSyncing, fetchCampaigns } from '../sync.js';
 import { evaluateAlerts, openAlertCount } from '../alerts.js';
 import { hashPassword, passwordProblem, randomToken, sha256 } from '../security.js';
 import { monthReport, linksOf, isMonth } from '../report.js';
+import { connectedApps, resourceUrl, mcpAllowedEmails } from '../mcp/oauth.js';
 import { todayBR } from '../metrics.js';
 
 const METRICS = ['cpl', 'cpa', 'followers', 'reach'];
 const PAY_MODES = ['detect', 'card', 'manual'];
 const RESULT_TYPES = ['auto', 'lead', 'message', 'purchase', 'click', 'lpv'];
+const CONTEXT_FIELDS = ['briefing', 'products', 'pricing', 'region', 'goals'];
 const r = Router();
 const staff = requireRole('admin', 'manager');
 const admin = requireRole('admin');
@@ -112,7 +114,7 @@ r.post('/alerts/:id/ack', staff, (req, res) => {
 /* ------------------------------ Clientes ------------------------------ */
 function listClients() {
   const clients = all(
-    `SELECT c.id, c.name, c.manager_id, c.monthly_budget, c.notes, c.active, u.name manager
+    `SELECT c.id, c.name, c.manager_id, c.monthly_budget, c.notes, c.briefing, c.products, c.pricing, c.region, c.goals, c.active, u.name manager
        FROM clients c LEFT JOIN users u ON u.id = c.manager_id ORDER BY c.name COLLATE NOCASE`,
   );
   const chs = all('SELECT id, client_id, platform, account_id, metric, result_type, pay_mode, target, active FROM channels');
@@ -127,6 +129,7 @@ function validateClient(body) {
   const budget = body.monthly_budget === '' || body.monthly_budget == null ? null : Number(body.monthly_budget);
   if (budget != null && (!Number.isFinite(budget) || budget < 0 || budget > 1e8)) return { error: 'Orçamento mensal inválido.' };
   const notes = String(body.notes ?? '').slice(0, 500);
+  const ctx = Object.fromEntries(CONTEXT_FIELDS.map((k) => [k, String(body[k] ?? '').trim().slice(0, 4000) || null]));
   const seen = new Set();
   const channels = [];
   for (const c of Array.isArray(body.channels) ? body.channels : []) {
@@ -140,7 +143,7 @@ function validateClient(body) {
     channels.push({ platform: c.platform, account_id, metric: METRICS.includes(c.metric) ? c.metric : 'cpl', result_type: RESULT_TYPES.includes(c.result_type) ? c.result_type : 'auto', pay_mode: PAY_MODES.includes(c.pay_mode) ? c.pay_mode : 'detect', target, active: c.active === false ? 0 : 1 });
   }
   if (!channels.length) return { error: 'Ative pelo menos um canal (Google ou Meta).' };
-  return { name, manager_id, budget, notes, channels };
+  return { name, manager_id, budget, notes, ctx, channels };
 }
 
 function saveChannels(clientId, channels) {
@@ -159,7 +162,7 @@ r.post('/clients', staff, (req, res) => {
   const v = validateClient(req.body);
   if (v.error) return fail(res, v.error);
   const id = tx(() => {
-    const { id } = run('INSERT INTO clients (name, manager_id, monthly_budget, notes) VALUES (?,?,?,?)', v.name, v.manager_id, v.budget, v.notes);
+    const { id } = run('INSERT INTO clients (name, manager_id, monthly_budget, notes, briefing, products, pricing, region, goals) VALUES (?,?,?,?,?,?,?,?,?)', v.name, v.manager_id, v.budget, v.notes, v.ctx.briefing, v.ctx.products, v.ctx.pricing, v.ctx.region, v.ctx.goals);
     saveChannels(id, v.channels);
     return id;
   });
@@ -174,8 +177,8 @@ r.put('/clients/:id', staff, (req, res) => {
   const v = validateClient(req.body);
   if (v.error) return fail(res, v.error);
   tx(() => {
-    run('UPDATE clients SET name=?, manager_id=?, monthly_budget=?, notes=?, active=? WHERE id=?',
-      v.name, v.manager_id, v.budget, v.notes, req.body.active === false ? 0 : 1, id);
+    run('UPDATE clients SET name=?, manager_id=?, monthly_budget=?, notes=?, briefing=?, products=?, pricing=?, region=?, goals=?, active=? WHERE id=?',
+      v.name, v.manager_id, v.budget, v.notes, v.ctx.briefing, v.ctx.products, v.ctx.pricing, v.ctx.region, v.ctx.goals, req.body.active === false ? 0 : 1, id);
     saveChannels(id, v.channels);
   });
   audit(req, 'client_update', `${id} ${v.name}`);
@@ -256,6 +259,18 @@ r.put('/settings', admin, (req, res) => {
   }
   audit(req, 'settings_update', changed.join(','));
   res.json({ ok: true, changed });
+});
+
+/* ------------------------------ MCP (conexão com o Claude) ------------------------------ */
+r.get('/mcp', admin, (_req, res) => res.json({
+  url: resourceUrl().href, https: resourceUrl().protocol === 'https:', configured: !!process.env.PUBLIC_URL, restricted_to: mcpAllowedEmails(), apps: connectedApps(),
+}));
+
+r.delete('/mcp/apps/:clientId', admin, (req, res) => {
+  const id = String(req.params.clientId).slice(0, 64);
+  run('DELETE FROM oauth_tokens WHERE client_id = ?', id);
+  audit(req, 'mcp_revoke', id);
+  res.json({ ok: true });
 });
 
 r.post('/alerts/evaluate', admin, (_req, res) => res.json({ created: evaluateAlerts() }));

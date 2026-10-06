@@ -5,12 +5,10 @@ import { get, run, audit } from '../db.js';
 import {
   hashPassword, verifyPassword, passwordProblem, encrypt, decrypt, newTotpSecret, verifyTotp,
 } from '../security.js';
+import { authenticate } from '../login.js';
 import { createSession, destroySession, requireAuth, revokeOtherSessions } from '../session.js';
 
 const r = Router();
-const MAX_FAILS = 5;
-const LOCK_MS = 15 * 60 * 1000;
-const DUMMY = await hashPassword('dummy-password-for-timing');
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false,
@@ -24,40 +22,10 @@ const publicUser = (u, csrf) => ({
 
 r.post('/login', loginLimiter, async (req, res) => {
   const { email, password, code } = req.body ?? {};
-  if (typeof email !== 'string' || typeof password !== 'string' || email.length > 254 || password.length > 200) {
-    return res.status(400).json({ error: 'Dados inválidos.' });
-  }
-  const generic = { error: 'E-mail ou senha incorretos.' };
-  const u = get('SELECT * FROM users WHERE email = ?', email.trim().toLowerCase());
-  const locked = u && u.locked_until > Date.now();
-  // sempre executa o hash, exista o usuário ou não (evita enumeração por tempo)
-  const passOk = await verifyPassword(password, u?.pass_hash ?? DUMMY);
-
-  const fail = (why) => {
-    if (u) {
-      const fails = u.failed_attempts + 1;
-      if (fails >= MAX_FAILS) run('UPDATE users SET failed_attempts = 0, locked_until = ? WHERE id = ?', Date.now() + LOCK_MS, u.id);
-      else run('UPDATE users SET failed_attempts = ? WHERE id = ?', fails, u.id);
-    }
-    audit({ ip: req.ip, user: u }, 'login_fail', `${why} ${email.slice(0, 80)}`);
-    return res.status(401).json(generic);
-  };
-
-  if (locked) {
-    audit({ ip: req.ip, user: u }, 'login_blocked', email.slice(0, 80));
-    return res.status(429).json({ error: 'Conta temporariamente bloqueada. Tente novamente em 15 minutos.' });
-  }
-  if (!u || !u.active || !passOk) return fail('senha');
-
-  if (u.totp_secret_enc) {
-    if (!code) return res.status(401).json({ error: 'Informe o código do autenticador.', code: '2fa_required' });
-    if (!verifyTotp(decrypt(u.totp_secret_enc), String(code).trim())) return fail('2fa');
-  }
-
-  run('UPDATE users SET failed_attempts = 0, locked_until = 0, last_login = unixepoch() WHERE id = ?', u.id);
-  const csrf = createSession(req, res, u);
-  audit({ ip: req.ip, user: u }, 'login_ok');
-  res.json(publicUser({ ...u, has_2fa: !!u.totp_secret_enc }, csrf));
+  const result = await authenticate({ email, password, code, ip: req.ip });
+  if (!result.user) return res.status(result.status).json(result.body);
+  const csrf = createSession(req, res, result.user);
+  res.json(publicUser(result.user, csrf));
 });
 
 r.post('/logout', (req, res) => {

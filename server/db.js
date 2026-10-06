@@ -134,6 +134,47 @@ if (db.prepare("SELECT sql FROM sqlite_master WHERE name = 'channels'").get().sq
 // forma de pagamento: 'detect' (lida da API), 'card' (cartão automático) ou 'manual' (recarga manual); manual sobrescreve a detecção
 try { db.exec("ALTER TABLE channels ADD COLUMN pay_mode TEXT NOT NULL DEFAULT 'detect'"); } catch { /* coluna já existe */ }
 
+// Contexto do cliente para análises (exposto pelo MCP): briefing, produtos/serviços, preços, região e metas
+for (const col of ['briefing', 'products', 'pricing', 'region', 'goals']) {
+  try { db.exec(`ALTER TABLE clients ADD COLUMN ${col} TEXT`); } catch { /* já existe */ }
+}
+
+// OAuth do MCP: clientes registrados (DCR), autorizações pendentes, códigos e tokens (só hashes dos segredos)
+db.exec(`
+CREATE TABLE IF NOT EXISTS oauth_clients (
+  client_id TEXT PRIMARY KEY,
+  info TEXT NOT NULL,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE TABLE IF NOT EXISTS oauth_pending (
+  id_hash TEXT PRIMARY KEY,
+  data TEXT NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS oauth_codes (
+  code_hash TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  challenge TEXT NOT NULL,
+  redirect_uri TEXT NOT NULL,
+  resource TEXT,
+  scopes TEXT NOT NULL DEFAULT '',
+  expires_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS oauth_tokens (
+  token_hash TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('access','refresh')),
+  client_id TEXT NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  resource TEXT,
+  scopes TEXT NOT NULL DEFAULT '',
+  expires_at INTEGER NOT NULL,
+  family TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_oauth_tokens_user ON oauth_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_oauth_tokens_family ON oauth_tokens(family);
+`);
+
 export const get = (sql, ...p) => db.prepare(sql).get(...p);
 export const all = (sql, ...p) => db.prepare(sql).all(...p);
 export const run = (sql, ...p) => {

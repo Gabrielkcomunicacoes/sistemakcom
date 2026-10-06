@@ -19,3 +19,7 @@ CSRF + checagem de Origin · CSP estrita sem scripts inline · chaves de API cif
 
 ## Produção
 Coloque atrás de HTTPS (nginx/Caddy) e defina `COOKIE_SECURE=1` e `TRUST_PROXY=1` no `.env`. Faça backup de `.env` e `data/`.
+
+## MCP (conectar o Claude, somente leitura)
+O sistema expõe `/mcp` (Streamable HTTP + OAuth) com consultas de desempenho, termos de pesquisa, criativos, configurações e histórico de alterações.
+Defina `PUBLIC_URL` (HTTPS) no `.env`. Documentação das ferramentas e passo a passo: [docs/MCP.md](docs/MCP.md).

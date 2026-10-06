@@ -12,6 +12,8 @@ import authRoutes from './routes/auth.js';
 import apiRoutes from './routes/api.js';
 import { syncAll, fetchCampaigns, fetchAds } from './sync.js';
 import { evaluateAlerts } from './alerts.js';
+import { mountMcp } from './mcp/index.js';
+import { purgeOauth } from './mcp/oauth.js';
 
 assertMasterKey();
 
@@ -48,6 +50,10 @@ app.use((_req, res, next) => {
 
 app.use(express.json({ limit: '50kb' }));
 app.use(attachSession);
+
+/* MCP (somente leitura) + OAuth para conectar o Claude */
+mountMcp(app);
+app.get('/oauth/consent', (_req, res) => { res.setHeader('Cache-Control', 'no-store'); res.sendFile(path.join(pub, 'oauth.html')); });
 
 /* API */
 app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
@@ -117,3 +123,4 @@ setTimeout(safely(syncAll), 10_000);
 setInterval(safely(syncAll), every);
 setInterval(safely(evaluateAlerts), 5 * 60 * 1000);
 setInterval(safely(purgeExpired), 60 * 60 * 1000);
+setInterval(safely(purgeOauth), 60 * 60 * 1000);

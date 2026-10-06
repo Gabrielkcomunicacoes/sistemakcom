@@ -1,6 +1,7 @@
 import { api, esc, brl, icon, toast, modal, confirmBox, state, METRIC } from '../core.js';
 
 const PLAT = { google: 'Google Ads', meta: 'Meta Ads' };
+const CONTEXT_FIELDS = ['briefing', 'products', 'pricing', 'region', 'goals'];
 const metricOptions = (platform) => [['cpl', 'CPL'], ['cpa', 'CPA (Vendas)'], ...(platform === 'meta' ? [['followers', 'Seguidores'], ['reach', 'Alcance']] : [])];
 const HINTS = {
   cpl: 'Custo máximo por lead.', cpa: 'Custo máximo por venda.',
@@ -36,6 +37,16 @@ async function openForm(client, team, done) {
       </div>
       ${channelBox('google', c.channels.find((x) => x.platform === 'google'))}
       ${channelBox('meta', c.channels.find((x) => x.platform === 'meta'))}
+      <details class="field" ${CONTEXT_FIELDS.some((k) => c[k]) ? 'open' : ''}>
+        <summary style="cursor:pointer;font-weight:600">Contexto para análises (briefing, produtos, preços, região, metas)</summary>
+        <div class="grid" style="margin-top:10px">
+          <div class="field"><label>Briefing</label><textarea id="briefing" maxlength="4000" placeholder="Quem é o cliente, público, diferenciais, tom de voz…">${esc(c.briefing ?? '')}</textarea></div>
+          <div class="field"><label>Produtos / serviços</label><textarea id="products" maxlength="4000">${esc(c.products ?? '')}</textarea></div>
+          <div class="field"><label>Preços e condições</label><textarea id="pricing" maxlength="4000">${esc(c.pricing ?? '')}</textarea></div>
+          <div class="field"><label>Região atendida</label><textarea id="region" maxlength="4000" placeholder="Cidades, bairros, raio de atendimento…">${esc(c.region ?? '')}</textarea></div>
+          <div class="field"><label>Metas do negócio</label><textarea id="goals" maxlength="4000" placeholder="Ex.: 40 leads/mês, ticket médio, taxa de fechamento…">${esc(c.goals ?? '')}</textarea></div>
+        </div>
+      </details>
       <div class="field"><label>Observações</label><textarea id="notes" maxlength="500">${esc(c.notes ?? '')}</textarea></div>
       <div class="actions"><button type="button" class="btn" data-x>Cancelar</button><button class="btn primary" type="submit">${client ? 'Salvar' : 'Ativar monitoramento'}</button></div>
     </form>`);
@@ -61,6 +72,7 @@ async function openForm(client, team, done) {
     const body = {
       name: el.querySelector('#name').value, manager_id: el.querySelector('#mgr').value || null,
       monthly_budget: el.querySelector('#budget').value, notes: el.querySelector('#notes').value, channels,
+      ...Object.fromEntries(CONTEXT_FIELDS.map((k) => [k, el.querySelector(`#${k}`).value])),
     };
     try {
       await api(client ? `/clients/${client.id}` : '/clients', { method: client ? 'PUT' : 'POST', body });

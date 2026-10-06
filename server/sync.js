@@ -3,12 +3,12 @@ import { getSetting } from './settings.js';
 import { todayBR, addDays, isDate } from './metrics.js';
 import { evaluateAlerts } from './alerts.js';
 
-const META_V = process.env.META_API_VERSION || 'v21.0';
+export const META_V = process.env.META_API_VERSION || 'v21.0';
 const GADS_V = process.env.GOOGLE_ADS_API_VERSION || 'v25';
 const WINDOW_DAYS = 30;
-const REAL_ID = /^(act_)?\d[\d-]{5,}$/;
+export const REAL_ID = /^(act_)?\d[\d-]{5,}$/;
 
-const META_GROUPS = {
+export const META_GROUPS = {
   lead: ['lead', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead'],
   message: ['onsite_conversion.messaging_conversation_started_7d'],
   purchase: ['purchase', 'offsite_conversion.fb_pixel_purchase', 'omni_purchase'],
@@ -18,9 +18,9 @@ const META_GROUPS = {
   pagelike: ['like'],
 };
 // "auto": CPL = leads + conversas iniciadas; CPA = compras; seguidores = follows do Instagram + curtidas da página
-const AUTO = { cpl: ['lead', 'message'], cpa: ['purchase'], followers: ['follow', 'pagelike'] };
+export const AUTO = { cpl: ['lead', 'message'], cpa: ['purchase'], followers: ['follow', 'pagelike'] };
 
-async function http(url, opts = {}) {
+export async function http(url, opts = {}) {
   const r = await fetch(url, { ...opts, signal: AbortSignal.timeout(30000) });
   const text = await r.text();
   let json; try { json = JSON.parse(text); } catch { json = null; }
@@ -95,7 +95,7 @@ async function googleAccessToken() {
   return gToken.value;
 }
 
-async function gaql(customerId, query) {
+export async function gaql(customerId, query) {
   const dev = getSetting('google_developer_token');
   if (!dev) throw new Error('Google Developer Token não configurado');
   const headers = {
