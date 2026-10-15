@@ -34,6 +34,26 @@ export async function http(url, opts = {}) {
 }
 
 /* ------------------------------ Meta ------------------------------ */
+const META_STATUS = {
+  2: 'Conta Meta desativada',
+  3: 'Conta Meta com pagamento pendente: cartão recusado ou sem forma de pagamento válida',
+  7: 'Conta Meta em análise de risco',
+  8: 'Conta Meta em período de liquidação de pagamento',
+  9: 'Conta Meta em período de carência: pagamento em atraso',
+  100: 'Conta Meta em análise',
+  101: 'Conta Meta encerrada',
+};
+/** Lê valores como "R$ 7.500,00", "R$7500,00" ou "$7,500.00" (decimal = último ponto/vírgula seguido de 2 dígitos). */
+export function parseMoney(text) {
+  const m = String(text || '').match(/\d[\d.,]*/);
+  if (!m) return null;
+  const t = m[0].replace(/[.,]$/, '');
+  const dec = t.match(/[.,](\d{2})$/);
+  const int = (dec ? t.slice(0, -3) : t).replace(/[.,]/g, '');
+  const v = parseFloat(`${int}.${dec ? dec[1] : '00'}`);
+  return Number.isFinite(v) ? v : null;
+}
+
 async function fetchMeta(ch, from, to) {
   const token = getSetting('meta_access_token');
   if (!token) throw new Error('Meta Access Token não configurado');
@@ -62,18 +82,18 @@ async function fetchMeta(ch, from, to) {
 
   let balance = null, problem = null, funding = null;
   const acc = await http(
-    `https://graph.facebook.com/${META_V}/${id}?fields=account_status,is_prepay_account,funding_source_details,spend_cap,amount_spent`, { headers },
+    `https://graph.facebook.com/${META_V}/${id}?fields=account_status,disable_reason,is_prepay_account,funding_source_details,spend_cap,amount_spent`, { headers },
   );
-  if (acc.account_status && acc.account_status !== 1) problem = 'Conta Meta não está ativa';
+  if (acc.account_status && acc.account_status !== 1) problem = META_STATUS[acc.account_status] || `Conta Meta não está ativa (status ${acc.account_status})`;
   const display = acc.funding_source_details?.display_string || '';
   // forma de pagamento: pré-pago (recarga manual), cartão (cobrança automática) ou outro meio automático
   if (acc.is_prepay_account) funding = 'prepaid';
   else if (acc.funding_source_details?.type === 1) funding = 'card';
   else if (acc.funding_source_details) funding = 'auto';
-  const m = display.match(/(\d{1,3}(?:\.\d{3})*,\d{2})/);
-  if (acc.is_prepay_account && m) balance = parseFloat(m[1].replace(/\./g, '').replace(',', '.'));
+  const shown = parseMoney(display);
+  if (acc.is_prepay_account && shown != null) balance = shown;
   // conta com teto de gastos: saldo = teto − gasto (valores vêm em centavos)
-  else if (+acc.spend_cap > 0) balance = Math.max(0, (+acc.spend_cap - (+acc.amount_spent || 0)) / 100);
+  else if (!acc.is_prepay_account && +acc.spend_cap > 0) balance = Math.max(0, (+acc.spend_cap - (+acc.amount_spent || 0)) / 100);
   return { days, balance, problem, funding };
 }
 
@@ -166,8 +186,9 @@ async function syncChannel(ch) {
   } catch (e) {
     const msg = String(e.message).slice(0, 200);
     console.error(`[sync] canal ${ch.id} (${ch.platform}):`, msg);
+    // o saldo anterior ficou velho: melhor mostrar o erro do que um saldo que pode estar errado
     run(`INSERT INTO channel_status (channel_id,last_sync,error) VALUES (?,unixepoch(),?)
-         ON CONFLICT(channel_id) DO UPDATE SET last_sync=excluded.last_sync, error=excluded.error`, ch.id, msg);
+         ON CONFLICT(channel_id) DO UPDATE SET last_sync=excluded.last_sync, error=excluded.error, balance=NULL`, ch.id, msg);
     return false;
   }
 }

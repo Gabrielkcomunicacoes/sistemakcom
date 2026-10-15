@@ -39,6 +39,8 @@ function classify(ch, m) {
     if (m.daysLeft < 1.5) bump(2, 'Saldo acaba em menos de 2 dias');
     else if (m.daysLeft < 4) bump(1, 'Saldo baixo');
   } else if (m.balance != null && m.balance <= 0 && m.avg7 > 0) bump(2, 'Conta sem saldo');
+  // problema na conta (cartão recusado, conta desativada) ou falha de sincronização não pode passar como "ok"
+  if (ch.error) /^Conta Meta/.test(ch.error) ? bump(2, ch.error) : bump(1, 'Dados desatualizados: falha ao sincronizar');
   const status = level === 2 ? 'critical' : level === 1 ? 'warning' : (m.spend > 0 || m.balance != null ? 'ok' : 'idle');
   return { status, reasons };
 }
