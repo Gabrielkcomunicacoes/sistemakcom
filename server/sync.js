@@ -1,4 +1,4 @@
-import { all, run, tx } from './db.js';
+import { all, get, run, tx } from './db.js';
 import { getSetting } from './settings.js';
 import { todayBR, addDays, isDate } from './metrics.js';
 import { evaluateAlerts } from './alerts.js';
@@ -184,8 +184,13 @@ async function syncChannel(ch) {
     });
     return true;
   } catch (e) {
-    const msg = String(e.message).slice(0, 200);
-    console.error(`[sync] canal ${ch.id} (${ch.platform}):`, msg);
+    const raw = String(e.message);
+    // 403 da Meta = a conta não está atribuída ao usuário do sistema do token (não é falha do painel)
+    const msg = (/Ad account owner has NOT grant/i.test(raw)
+      ? 'Sem acesso à conta de anúncios: atribua esta conta ao usuário do sistema (KCOM API) no Business Manager'
+      : raw).slice(0, 200);
+    const who = get('SELECT name FROM clients WHERE id = ?', ch.client_id)?.name ?? '?';
+    console.error(`[sync] ${who} · canal ${ch.id} (${ch.platform} ${ch.account_id}):`, msg);
     // o saldo anterior ficou velho: melhor mostrar o erro do que um saldo que pode estar errado
     run(`INSERT INTO channel_status (channel_id,last_sync,error) VALUES (?,unixepoch(),?)
          ON CONFLICT(channel_id) DO UPDATE SET last_sync=excluded.last_sync, error=excluded.error, balance=NULL`, ch.id, msg);
