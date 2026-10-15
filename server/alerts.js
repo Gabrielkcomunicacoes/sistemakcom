@@ -75,7 +75,8 @@ function conditions(client, ch, d3, first) {
       message: `Projeção do mês ${brl(client.projectedSpend)} = ${client.projectedPct}% da verba de ${brl(client.monthlyBudget)}`,
     });
   }
-  if (ch.error && /^Conta Meta/.test(ch.error)) out.push({ type: 'account_issue', severity: 'critical', message: ch.error });
+  if (ch.noFunds) out.push({ type: 'low_balance', severity: 'critical', message: `Conta sem saldo — ${ch.error}` });
+  else if (ch.error && /^Conta Meta/.test(ch.error)) out.push({ type: 'account_issue', severity: 'critical', message: ch.error });
   else if (ch.error) out.push({ type: 'sync_error', severity: 'warning', message: `Falha ao sincronizar: ${ch.error}` });
   return out;
 }

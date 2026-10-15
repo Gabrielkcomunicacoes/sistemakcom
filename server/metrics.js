@@ -40,6 +40,7 @@ function classify(ch, m) {
     else if (m.daysLeft < 4) bump(1, 'Saldo baixo');
   } else if (m.balance != null && m.balance <= 0 && m.avg7 > 0) bump(2, 'Conta sem saldo');
   // problema na conta (cartão recusado, conta desativada) ou falha de sincronização não pode passar como "ok"
+  if (m.noFunds) bump(2, 'Conta sem saldo');
   if (ch.error) /^Conta Meta/.test(ch.error) ? bump(2, ch.error) : bump(1, 'Dados desatualizados: falha ao sincronizar');
   const status = level === 2 ? 'critical' : level === 1 ? 'warning' : (m.spend > 0 || m.balance != null ? 'ok' : 'idle');
   return { status, reasons };
@@ -95,8 +96,10 @@ export function buildDashboard({ from, to }) {
     const prev7 = sum(days, addDays(today, -7), addDays(today, -1));
     const prior = sum(days, addDays(today, -9), addDays(today, -2));
     const last2 = sum(days, addDays(today, -1), today);
+    // cartão não passou (pagamento recusado/em atraso ou campanhas ativas sem entrega): para o cliente é conta sem saldo
+    const noFunds = /^Conta Meta (com pagamento|em período|sem entrega)/.test(ch.error ?? '');
     const m = {
-      reach3: r3.conv / 3,
+      noFunds, reach3: r3.conv / 3,
       spend: range.spend, conv: range.conv, cpr, avg7, daysLeft, balance: ch.balance, error: ch.error,
       cpr3: s3.conv > 0 ? s3.spend / s3.conv : null, spend3: s3.spend,
     };
@@ -105,7 +108,7 @@ export function buildDashboard({ from, to }) {
       id: ch.id, platform: ch.platform, metric: ch.metric, target: ch.target,
       spend: round(range.spend), conversions: round(range.conv, 1), cpr: round(cpr),
       todaySpend: round(t.spend), todayConv: round(t.conv, 1),
-      balance: round(ch.balance), funding: ch.funding ?? null, daysLeft: round(daysLeft, 1), trends, spark,
+      balance: round(ch.balance), noFunds, funding: ch.funding ?? null, daysLeft: round(daysLeft, 1), trends, spark,
       monthSpend: round(month.spend), lastSync: ch.last_sync, error: ch.error, status, reasons,
       higherBetter: isReach, _avg7: avg7, _reach3: r3.conv / 3,
       depletionDate: daysLeft != null ? addDays(today, Math.max(0, Math.floor(daysLeft))) : null,

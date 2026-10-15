@@ -43,11 +43,11 @@ function channelHtml(ch) {
     </div>
     <div class="bar" title="Custo em relação à meta"><i style="width:${pct}%"></i></div>
     <div class="foot"><span>Gasto <b>${brl(ch.spend)}</b></span><span>${reach ? 'Alcance' : 'Conv.'} <b>${num(ch.conversions)}</b></span>
-      ${ch.funding === 'card' || ch.funding === 'auto' ? `<span class="badge" title="Pagamento automático: sem recarga manual">${ch.funding === 'card' ? '💳 Cartão automático' : 'Pagamento automático'}</span>` : `<span>Saldo <b>${ch.balance != null ? brl(ch.balance) : '—'}</b></span>${days}`}</div>
+      ${ch.noFunds ? `<span class="badge critical" title="${esc(ch.error)}">⛔ Sem saldo — cartão não passou</span>` : ch.funding === 'card' || ch.funding === 'auto' ? `<span class="badge" title="Pagamento automático: sem recarga manual">${ch.funding === 'card' ? '💳 Cartão automático' : 'Pagamento automático'}</span>` : `<span>Saldo <b>${ch.balance != null ? brl(ch.balance) : '—'}</b></span>${days}`}</div>
     <div class="foot"><div class="trends" title="Variação do custo vs. meta">
       <span class="muted">7D</span>${trend(ch.trends[7], reach)}<span class="muted">14D</span>${trend(ch.trends[14], reach)}<span class="muted">30D</span>${trend(ch.trends[30], reach)}</div>
       ${sparkline(ch.spark, ch.platform === 'google' ? 'var(--google)' : 'var(--meta)')}</div>
-    ${ch.error ? `<div class="foot" style="color:var(--warn)">⚠ ${esc(ch.error)}</div>` : ''}
+    ${ch.error ? `<div class="foot" style="color:var(${ch.noFunds ? '--crit' : '--warn'})">⚠ ${esc(ch.error)}</div>` : ''}
   </div>`;
 }
 
@@ -61,7 +61,8 @@ function forecastHtml(c) {
     parts.push(`<span title="Gasto até hoje + ritmo dos últimos 7 dias">Fechamento <b class="${cls}">${brl(c.projectedSpend, 0)} (${c.projectedPct}%)</b></span>`);
   }
   for (const ch of c.channels) {
-    if (ch.depletionDate && ch.daysLeft < 7) parts.push(`<span>${PLAT[ch.platform]} ${ch.daysLeft <= 0.05 ? '<b class="bad">sem saldo</b>' : `zera <b class="${ch.daysLeft < 3 ? 'bad' : 'warn'}">${dm(ch.depletionDate)}</b>`}</span>`);
+    if (ch.noFunds) parts.push(`<span>${PLAT[ch.platform]} <b class="bad">sem saldo</b></span>`);
+    else if (ch.depletionDate && ch.daysLeft < 7) parts.push(`<span>${PLAT[ch.platform]} ${ch.daysLeft <= 0.05 ? '<b class="bad">sem saldo</b>' : `zera <b class="${ch.daysLeft < 3 ? 'bad' : 'warn'}">${dm(ch.depletionDate)}</b>`}</span>`);
   }
   return parts.length ? `<div class="fc">${parts.join('')}</div>` : '';
 }

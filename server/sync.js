@@ -54,7 +54,7 @@ export function parseMoney(text) {
   return Number.isFinite(v) ? v : null;
 }
 
-async function fetchMeta(ch, from, to) {
+export async function fetchMeta(ch, from, to) {
   const token = getSetting('meta_access_token');
   if (!token) throw new Error('Meta Access Token não configurado');
   const id = `act_${ch.account_id.replace(/^act_/, '')}`;
@@ -82,9 +82,11 @@ async function fetchMeta(ch, from, to) {
 
   let balance = null, problem = null, funding = null;
   const acc = await http(
-    `https://graph.facebook.com/${META_V}/${id}?fields=account_status,disable_reason,is_prepay_account,funding_source_details,spend_cap,amount_spent`, { headers },
+    `https://graph.facebook.com/${META_V}/${id}?fields=account_status,disable_reason,balance,is_prepay_account,funding_source_details,spend_cap,amount_spent`, { headers },
   );
   if (acc.account_status && acc.account_status !== 1) problem = META_STATUS[acc.account_status] || `Conta Meta não está ativa (status ${acc.account_status})`;
+  // status 3/9: "balance" é o valor em aberto que o Meta não conseguiu cobrar (em centavos)
+  if (problem && [3, 9].includes(acc.account_status) && +acc.balance > 0) problem += ` (R$ ${(+acc.balance / 100).toFixed(2).replace('.', ',')} em aberto)`;
   const display = acc.funding_source_details?.display_string || '';
   // forma de pagamento: pré-pago (recarga manual), cartão (cobrança automática) ou outro meio automático
   if (acc.is_prepay_account) funding = 'prepaid';
@@ -94,6 +96,13 @@ async function fetchMeta(ch, from, to) {
   if (acc.is_prepay_account && shown != null) balance = shown;
   // conta com teto de gastos: saldo = teto − gasto (valores vêm em centavos)
   else if (!acc.is_prepay_account && +acc.spend_cap > 0) balance = Math.max(0, (+acc.spend_cap - (+acc.amount_spent || 0)) / 100);
+  // cartão recusado nem sempre muda o status da conta: campanhas ativas sem nenhum gasto em 2 dias é o sinal
+  if (!problem && (funding === 'card' || funding === 'auto') && !days.some((d) => d.date >= addDays(to, -1) && d.spend > 0)) {
+    try {
+      const act = await http(`https://graph.facebook.com/${META_V}/${id}/campaigns?${new URLSearchParams({ fields: 'id', effective_status: '["ACTIVE"]', limit: '1' })}`, { headers });
+      if (act.data?.length) problem = 'Conta Meta sem entrega: campanhas ativas e nenhum gasto há 2 dias. Verifique o cartão e os anúncios no Gerenciador';
+    } catch { /* sem a lista de campanhas não há como afirmar */ }
+  }
   return { days, balance, problem, funding };
 }
 
