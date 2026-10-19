@@ -85,6 +85,6 @@ export function confirmBox(message, okLabel = 'Confirmar') {
 }
 
 export const METRIC = { cpl: 'CPL', cpa: 'CPA', followers: 'SEGUIDORES', reach: 'ALCANCE' };
-export const RESULT_NAME = { cpl: 'Leads', cpa: 'Vendas', followers: 'Seguidores', reach: 'Alcance' };
+export const RESULT_NAME = { cpl: 'Leads', cpa: 'Vendas', followers: 'Visitas ao perfil / seguidores', reach: 'Alcance' };
 export const initials = (n) => String(n).split(/\s+/).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
 export const ROLES = { admin: 'Administrador', manager: 'Gestor', viewer: 'Visualização', tv: 'TV' };

@@ -391,7 +391,7 @@ export function conversionDefinition(ch) {
   if (ch.platform === 'google') return 'conversions = todas as ações do Google marcadas para entrar na coluna Conversões (ver get_reporting_config).';
   const labels = { lead: 'leads (formulário/pixel)', message: 'conversas iniciadas (mensagens)', purchase: 'compras', click: 'cliques no link', lpv: 'visualizações da página de destino' };
   if (ch.metric === 'reach') return 'conversions = alcance (objetivo do canal é alcance).';
-  if (ch.metric === 'followers') return 'conversions = novos seguidores do Instagram + curtidas da página.';
+  if (ch.metric === 'followers') return 'conversions = visitas ao perfil do Instagram (campanhas de visita ao perfil) + seguidores/curtidas da página.';
   const groups = metaResultGroups(ch);
   return `conversions = ${groups.map((g) => labels[g] ?? g).join(' + ') || 'não definido'} (resultado configurado para o canal).`;
 }

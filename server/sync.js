@@ -54,6 +54,18 @@ export function parseMoney(text) {
   return Number.isFinite(v) ? v : null;
 }
 
+/** Campanhas de "Visitas ao perfil do Instagram" (objetivo de seguidores): a Meta não devolve "seguidores" na API de anúncios;
+ *  o resultado dessas campanhas é a visita ao perfil, que vem como link_click nos conjuntos com meta PROFILE_VISIT. */
+const PROFILE_FILTER = JSON.stringify([{ field: 'adset.optimization_goal', operator: 'IN', value: ['PROFILE_VISIT'] }]);
+async function profileVisits(base, headers, from, to, level, key) {
+  const q = new URLSearchParams({
+    level, fields: `${key === 'date_start' ? '' : `${key},`}actions`, limit: '300', filtering: PROFILE_FILTER,
+    time_range: JSON.stringify({ since: from, until: to }), ...(key === 'date_start' ? { time_increment: '1' } : {}),
+  });
+  const j = await http(`${base}/insights?${q}`, { headers });
+  return new Map((j.data ?? []).map((r) => [r[key], +(r.actions ?? []).find((a) => a.action_type === 'link_click')?.value || 0]));
+}
+
 export async function fetchMeta(ch, from, to) {
   const token = getSetting('meta_access_token');
   if (!token) throw new Error('Meta Access Token não configurado');
@@ -68,6 +80,7 @@ export async function fetchMeta(ch, from, to) {
     time_range: JSON.stringify({ since: from, until: to }),
   });
   const ins = await http(`https://graph.facebook.com/${META_V}/${id}/insights?${q}`, { headers });
+  const visits = ch.metric === 'followers' ? await profileVisits(`https://graph.facebook.com/${META_V}/${id}`, headers, from, to, 'account', 'date_start') : new Map();
   const days = (ins.data ?? []).map((d) => {
     // cada grupo conta uma vez (lead e lead_grouped descrevem o mesmo evento); grupos se somam
     const conv = groups.reduce((sum, g) => {
@@ -75,7 +88,7 @@ export async function fetchMeta(ch, from, to) {
       return sum + (v.length ? Math.max(...v) : 0);
     }, 0);
     return {
-      date: d.date_start, spend: +d.spend || 0, conv: reach ? +d.reach || 0 : conv,
+      date: d.date_start, spend: +d.spend || 0, conv: reach ? +d.reach || 0 : conv + (visits.get(d.date_start) ?? 0),
       impressions: +d.impressions || 0, clicks: +d.clicks || 0, reach: +d.reach || 0,
     };
   });
@@ -263,13 +276,14 @@ export async function fetchCampaigns(ch, from, to) {
       time_range: JSON.stringify({ since: from, until: to }),
     })}`, { headers });
     const byId = new Map((ins.data ?? []).map((r) => [r.campaign_id, r]));
+    const visits = ch.metric === 'followers' ? await profileVisits(base, headers, from, to, 'campaign', 'campaign_id') : new Map();
     const groups = META_GROUPS[ch.result_type] && ['cpl', 'cpa'].includes(ch.metric) ? [ch.result_type] : (AUTO[ch.metric] ?? []);
     return (list.data ?? []).map((c) => {
       const r = byId.get(c.id) ?? {};
-      const results = ch.metric === 'reach' ? +r.reach || 0 : groups.reduce((sum, g) => {
+      const results = (ch.metric === 'reach' ? +r.reach || 0 : groups.reduce((sum, g) => {
         const v = (r.actions ?? []).filter((a) => META_GROUPS[g].includes(a.action_type)).map((a) => +a.value);
         return sum + (v.length ? Math.max(...v) : 0);
-      }, 0);
+      }, 0)) + (visits.get(c.id) ?? 0);
       return {
         name: c.name, objective: c.objective, budget: c.daily_budget ? +c.daily_budget / 100 : null,
         spend: +r.spend || 0, results, impressions: +r.impressions || 0, clicks: +r.clicks || 0,
@@ -308,13 +322,14 @@ export async function fetchAds(ch, from, to) {
       time_range: JSON.stringify({ since: from, until: to }),
     })}`, { headers });
     const byId = new Map((ins.data ?? []).map((r) => [r.ad_id, r]));
+    const visits = ch.metric === 'followers' ? await profileVisits(base, headers, from, to, 'ad', 'ad_id') : new Map();
     const groups = META_GROUPS[ch.result_type] && ['cpl', 'cpa'].includes(ch.metric) ? [ch.result_type] : (AUTO[ch.metric] ?? []);
     return (list.data ?? []).map((a) => {
       const r = byId.get(a.id) ?? {};
-      const results = ch.metric === 'reach' ? +r.reach || 0 : groups.reduce((sum, g) => {
+      const results = (ch.metric === 'reach' ? +r.reach || 0 : groups.reduce((sum, g) => {
         const v = (r.actions ?? []).filter((x) => META_GROUPS[g].includes(x.action_type)).map((x) => +x.value);
         return sum + (v.length ? Math.max(...v) : 0);
-      }, 0);
+      }, 0)) + (visits.get(a.id) ?? 0);
       return {
         name: a.name, campaign: a.campaign?.name ?? '', image: a.creative?.thumbnail_url || a.creative?.image_url || null,
         spend: +r.spend || 0, results, impressions: +r.impressions || 0, clicks: +r.clicks || 0,

@@ -5,7 +5,7 @@ const CONTEXT_FIELDS = ['briefing', 'products', 'pricing', 'region', 'goals'];
 const metricOptions = (platform) => [['cpl', 'CPL'], ['cpa', 'CPA (Vendas)'], ...(platform === 'meta' ? [['followers', 'Seguidores'], ['reach', 'Alcance']] : [])];
 const HINTS = {
   cpl: 'Custo máximo por lead.', cpa: 'Custo máximo por venda.',
-  followers: 'Custo máximo por seguidor (seguidores do Instagram + curtidas da página).',
+  followers: 'Custo máximo por resultado de perfil: visitas ao perfil do Instagram (campanhas de visita ao perfil) + seguidores/curtidas da página.',
   reach: 'Meta de pessoas alcançadas por dia. O saldo vem da API (teto − gasto).',
 };
 const PAY = [['detect', 'Detectar automaticamente'], ['card', 'Cartão / automático (sem recarga)'], ['manual', 'Recarga manual (pré-pago)']];
