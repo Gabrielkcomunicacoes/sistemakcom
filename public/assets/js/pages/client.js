@@ -44,10 +44,16 @@ function campaignsHtml(groups) {
 /** Relatório mensal: comparativo mês a mês + link público somente leitura (staff). */
 function reportPanel(box, id) {
   const staff = ['admin', 'manager'].includes(state.user.role);
-  const month = new Date().toISOString().slice(0, 7);
+  const today = new Date().toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' });
+  const month = today.slice(0, 7);
   box.innerHTML = `<section class="panel" style="margin-bottom:16px"><h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Relatório do cliente
-      <span style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"><input type="month" id="rmonth" value="${month}" max="${month}" style="width:auto">
-      ${staff ? '<select id="rdays" style="width:auto" aria-label="Validade do link"><option value="7">Link: 7 dias</option><option value="30" selected>Link: 30 dias</option><option value="90">Link: 90 dias</option></select><button class="btn primary" id="rlink">Gerar link público</button>' : ''}</span></h2>
+      <span style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select id="rmode" style="width:auto" aria-label="Tipo de período"><option value="month">Mês</option><option value="range">Período</option><option value="day">Data específica</option></select>
+      <input type="month" id="rmonth" value="${month}" max="${month}" style="width:auto">
+      <span id="rrange" class="hidden" style="display:flex;gap:6px;align-items:center">De <input type="date" id="rfrom" max="${today}" style="width:auto"> até <input type="date" id="rto" max="${today}" style="width:auto"></span>
+      <input type="date" id="rday" class="hidden" max="${today}" style="width:auto" aria-label="Data">
+      ${staff ? `<label style="display:flex;gap:6px;align-items:center" title="Desmarque para o cliente não ver comparativos de crescimento/queda"><input type="checkbox" id="rchanges" checked style="width:auto"> Mostrar crescimento/queda ao cliente</label>
+      <select id="rdays" style="width:auto" aria-label="Validade do link"><option value="7">Link: 7 dias</option><option value="30" selected>Link: 30 dias</option><option value="90">Link: 90 dias</option></select><button class="btn primary" id="rlink">Gerar link público</button>` : ''}</span></h2>
     <div id="rout" class="muted" style="margin-top:8px"></div>${staff ? '<div id="rlinks" style="margin-top:10px"></div>' : ''}</section>`;
   const out = box.querySelector('#rout');
   const showLinks = async () => {
@@ -55,20 +61,37 @@ function reportPanel(box, id) {
     const ls = await api(`/clients/${id}/report-links`).catch(() => []);
     box.querySelector('#rlinks').innerHTML = ls.length ? `<small class="muted">Links gerados:</small>` + ls.map((l) => {
       const live = !l.revoked_at && l.expires_at * 1000 > Date.now();
-      return `<div class="kv"><span>${dateTime(l.created_at)} · ${live ? `expira ${dateTime(l.expires_at)}` : l.revoked_at ? 'revogado' : 'expirado'}</span>${live ? `<button class="btn" data-rev="${l.id}">Revogar</button>` : ''}</div>`;
+      return `<div class="kv"><span>${dateTime(l.created_at)} · ${live ? `expira ${dateTime(l.expires_at)}` : l.revoked_at ? 'revogado' : 'expirado'} · ${l.show_changes ? 'com' : 'sem'} crescimento/queda</span>${live ? `<button class="btn" data-rev="${l.id}">Revogar</button>` : ''}</div>`;
     }).join('') : '';
   };
+  const $ = (s) => box.querySelector(s);
+  const periodQuery = () => {
+    const mode = $('#rmode').value;
+    if (mode === 'day') return $('#rday').value ? `from=${$('#rday').value}` : null;
+    if (mode === 'range') return $('#rfrom').value && $('#rto').value && $('#rfrom').value <= $('#rto').value ? `from=${$('#rfrom').value}&to=${$('#rto').value}` : null;
+    return `month=${$('#rmonth').value || month}`;
+  };
   const drawReport = async () => {
+    const q = periodQuery();
+    if (q === null) return; // período incompleto
     out.innerHTML = '<div class="skeleton" style="min-height:120px"></div>';
     try {
-      const r = await api(`/clients/${id}/report?month=${box.querySelector('#rmonth').value || month}`);
+      const r = await api(`/clients/${id}/report?${q}${$('#rchanges')?.checked === false ? '&changes=0' : ''}`);
       out.innerHTML = `<div style="color:var(--text)">${reportHtml(r)}</div>`;
     } catch (e) { out.textContent = e.message; }
   };
-  box.querySelector('#rmonth').onchange = drawReport;
+  const syncMode = () => {
+    const mode = $('#rmode').value;
+    $('#rmonth').classList.toggle('hidden', mode !== 'month');
+    $('#rrange').classList.toggle('hidden', mode !== 'range');
+    $('#rday').classList.toggle('hidden', mode !== 'day');
+  };
+  syncMode();
+  $('#rmode').onchange = () => { syncMode(); drawReport(); };
+  for (const s of ['#rmonth', '#rfrom', '#rto', '#rday', '#rchanges']) { const el = $(s); if (el) el.onchange = drawReport; }
   box.querySelector('#rlink')?.addEventListener('click', async () => {
     try {
-      const r = await api(`/clients/${id}/report-links`, { method: 'POST', body: { days: +box.querySelector('#rdays').value } });
+      const r = await api(`/clients/${id}/report-links`, { method: 'POST', body: { days: +box.querySelector('#rdays').value, showChanges: $('#rchanges').checked } });
       const url = `${location.origin}${r.path}`;
       await navigator.clipboard?.writeText(url).catch(() => {});
       toast('Link copiado! Válido por ' + r.days + ' dias.', 'ok');

@@ -1,5 +1,5 @@
 import { get, all } from './db.js';
-import { clientDetail, addDays, todayBR } from './metrics.js';
+import { clientDetail, addDays, todayBR, isDate } from './metrics.js';
 
 export const isMonth = (s) => /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
 
@@ -16,24 +16,55 @@ export const monthLabel = (m) => `${MESES[+m.slice(5) - 1]} de ${m.slice(0, 4)}`
 
 const pctChange = (cur, prev) => (cur == null || prev == null || prev === 0 ? null : Math.round(((cur - prev) / prev) * 1000) / 10);
 
-/** Relatório mensal de um cliente: mês escolhido vs. mesmo período do mês anterior + histórico de 6 meses. */
-export function monthReport(clientId, month) {
+const dmy = (d) => d.split('-').reverse().join('/');
+const MAX_SPAN_DAYS = 366;
+
+/** Período livre (data específica ou intervalo) a partir de ?from=&to=; null se ausente/inválido. */
+export function customRange(from, to = from) {
+  if (!isDate(from) || !isDate(to)) return null;
   const today = todayBR();
-  const cur = { from: `${month}-01`, to: monthEnd(month) };
-  if (cur.to > today) cur.to = today; // mês em andamento: só até hoje
-  if (cur.from > today) cur.to = cur.from;
-  const spanDays = Math.round((Date.parse(cur.to) - Date.parse(cur.from)) / 864e5) + 1;
-  const pm = prevMonth(month);
-  const prev = { from: `${pm}-01`, to: addDays(`${pm}-01`, spanDays - 1) };
-  if (prev.to > monthEnd(pm)) prev.to = monthEnd(pm); // mês anterior mais curto
+  if (to > today) to = today;
+  if (from > to || (Date.parse(to) - Date.parse(from)) / 864e5 >= MAX_SPAN_DAYS) return null;
+  return { from, to };
+}
+
+/** Período pedido na query: ?from=&to= (dia único se só `from`) tem prioridade; senão ?month=; senão o mês atual. */
+export function periodFromQuery(q) {
+  const range = q.from ? customRange(q.from, q.to || q.from) : null;
+  return range ? { range } : { month: isMonth(q.month) ? q.month : todayBR().slice(0, 7) };
+}
+
+/** Relatório mensal de um cliente: mês escolhido vs. mesmo período do mês anterior + histórico de 6 meses. */
+export const monthReport = (clientId, month, opts) => periodReport(clientId, { month }, opts);
+
+/** Relatório de um período: mês inteiro, intervalo ou dia único. `showChanges: false` remove tudo que indica crescimento/queda. */
+export function periodReport(clientId, { month, range }, { showChanges = true } = {}) {
+  const today = todayBR();
+  let cur, prev, label;
+  if (range) {
+    cur = range;
+    const spanDays = Math.round((Date.parse(cur.to) - Date.parse(cur.from)) / 864e5) + 1;
+    prev = { from: addDays(cur.from, -spanDays), to: addDays(cur.from, -1) };
+    label = cur.from === cur.to ? dmy(cur.from) : `${dmy(cur.from)} a ${dmy(cur.to)}`;
+    month = cur.to.slice(0, 7);
+  } else {
+    cur = { from: `${month}-01`, to: monthEnd(month) };
+    if (cur.to > today) cur.to = today; // mês em andamento: só até hoje
+    if (cur.from > today) cur.to = cur.from;
+    const spanDays = Math.round((Date.parse(cur.to) - Date.parse(cur.from)) / 864e5) + 1;
+    const pm = prevMonth(month);
+    prev = { from: `${pm}-01`, to: addDays(`${pm}-01`, spanDays - 1) };
+    if (prev.to > monthEnd(pm)) prev.to = monthEnd(pm); // mês anterior mais curto
+    label = monthLabel(month);
+  }
 
   const now = clientDetail(clientId, cur);
-  const before = clientDetail(clientId, prev);
-  const t = now.totals, p = before.totals;
+  const t = now.totals;
+  const p = showChanges ? clientDetail(clientId, prev).totals : null;
 
   const history = [];
   let m = month;
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; showChanges && i < 6; i++) {
     const end = monthEnd(m) > today ? today : monthEnd(m);
     if (`${m}-01` <= end) {
       const d = clientDetail(clientId, { from: `${m}-01`, to: end }).totals;
@@ -44,13 +75,18 @@ export function monthReport(clientId, month) {
 
   const budget = get('SELECT monthly_budget b FROM clients WHERE id = ?', clientId)?.b ?? null;
   return {
-    client: now.name, month, label: monthLabel(month), range: cur, previousRange: prev, partial: cur.to < monthEnd(month),
+    client: now.name, month, label, range: cur, partial: !range && cur.to < monthEnd(month),
+    showChanges,
     budget,
-    totals: t, previous: p,
-    deltas: {
-      spend: pctChange(t.spend, p.spend), results: pctChange(t.results, p.results), cpr: pctChange(t.cpr, p.cpr),
-      clicks: pctChange(t.clicks, p.clicks), impressions: pctChange(t.impressions, p.impressions), reach: pctChange(t.reach, p.reach),
-    },
+    totals: t,
+    // com showChanges=false nada de comparação sai do servidor (não basta esconder no navegador)
+    ...(showChanges ? {
+      previousRange: prev, previous: p,
+      deltas: {
+        spend: pctChange(t.spend, p.spend), results: pctChange(t.results, p.results), cpr: pctChange(t.cpr, p.cpr),
+        clicks: pctChange(t.clicks, p.clicks), impressions: pctChange(t.impressions, p.impressions), reach: pctChange(t.reach, p.reach),
+      },
+    } : {}),
     // sem saldo/erros/IDs de conta: o relatório pode sair do sistema
     platforms: now.platforms.map((x) => ({ platform: x.platform, metric: x.metric, target: x.target, totals: x.totals, series: x.series })),
     dates: now.dates,
@@ -59,10 +95,10 @@ export function monthReport(clientId, month) {
 }
 
 export const activeLink = (hash) => get(
-  `SELECT l.client_id, c.name FROM report_links l JOIN clients c ON c.id = l.client_id
+  `SELECT l.client_id, l.show_changes, c.name FROM report_links l JOIN clients c ON c.id = l.client_id
     WHERE l.token_hash = ? AND l.revoked_at IS NULL AND l.expires_at > unixepoch() AND c.active = 1`, hash,
 );
 
 export const linksOf = (clientId) => all(
-  'SELECT id, created_at, expires_at, revoked_at FROM report_links WHERE client_id = ? ORDER BY id DESC LIMIT 20', clientId,
+  'SELECT id, created_at, expires_at, revoked_at, show_changes FROM report_links WHERE client_id = ? ORDER BY id DESC LIMIT 20', clientId,
 );

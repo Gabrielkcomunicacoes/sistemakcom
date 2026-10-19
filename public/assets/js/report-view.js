@@ -19,6 +19,8 @@ function compareRow(label, cur, prev, d, goodUp) {
 
 export function reportHtml(r) {
   const t = r.totals, p = r.previous, d = r.deltas;
+  const changes = r.showChanges !== false;
+  const vs = (v, goodUp) => (changes ? `${delta(v, goodUp)} vs. período anterior` : '');
   const reachOnly = r.platforms.length > 0 && r.platforms.every((x) => x.metric === 'reach');
   const kpi = (l, v, sub, k) => `<div class="kpi" style="--k:${k}"><small>${l}</small><strong>${v}</strong><em>${sub}</em></div>`;
   const maxSpend = Math.max(...r.history.map((h) => h.spend), 1);
@@ -28,14 +30,14 @@ export function reportHtml(r) {
     <div class="rep-head"><div><h1>${esc(r.client)}</h1>
       <div class="sub">Relatório de desempenho · ${esc(r.label)}${r.partial ? ` (parcial: ${dmy(r.range.from)} a ${dmy(r.range.to)})` : ''}</div></div></div>
     <div class="kpis">
-      ${kpi('Investimento', brl(t.spend), `${delta(d.spend, null)} vs. período anterior`, 'var(--accent)')}
-      ${kpi('Resultados', reachOnly ? '—' : num(t.results), `${delta(d.results, true)} vs. período anterior`, 'var(--ok)')}
-      ${kpi('Custo por resultado', t.cpr != null ? brl(t.cpr) : '—', `${delta(d.cpr, false)} vs. período anterior`, 'var(--warn)')}
-      ${kpi('Cliques', int(t.clicks), `${delta(d.clicks, true)} vs. período anterior`, 'var(--accent2)')}
+      ${kpi('Investimento', brl(t.spend), vs(d?.spend, null), 'var(--accent)')}
+      ${kpi('Resultados', reachOnly ? '—' : num(t.results), vs(d?.results, true), 'var(--ok)')}
+      ${kpi('Custo por resultado', t.cpr != null ? brl(t.cpr) : '—', vs(d?.cpr, false), 'var(--warn)')}
+      ${kpi('Cliques', int(t.clicks), vs(d?.clicks, true), 'var(--accent2)')}
       ${budgetPct != null ? kpi('Verba utilizada', `${budgetPct}%`, `de ${brl(r.budget)}`, 'var(--ok)') : ''}
     </div>
 
-    <section class="panel" style="margin-bottom:16px"><h2>Comparativo com o período anterior
+    ${changes ? `<section class="panel" style="margin-bottom:16px"><h2>Comparativo com o período anterior
       <span class="muted" style="font-weight:400">· ${dmy(r.range.from)}–${dmy(r.range.to)} vs. ${dmy(r.previousRange.from)}–${dmy(r.previousRange.to)}</span></h2>
       <div class="scroll-x"><table class="table compact"><thead><tr><th>Métrica</th><th>Atual</th><th>Anterior</th><th>Variação</th></tr></thead><tbody>
         ${compareRow('Investimento', brl(t.spend), brl(p.spend), d.spend, null)}
@@ -44,7 +46,7 @@ export function reportHtml(r) {
         ${compareRow('Impressões', int(t.impressions), int(p.impressions), d.impressions, true)}
         ${compareRow('Alcance', int(t.reach), int(p.reach), d.reach, true)}
         ${compareRow('Cliques', int(t.clicks), int(p.clicks), d.clicks, true)}
-      </tbody></table></div></section>
+      </tbody></table></div></section>` : ''}
 
     <div class="grid cols-2" style="margin-bottom:16px;align-items:start">
       ${r.platforms.map((x) => `<section class="panel"><h2 style="color:${COLOR[x.platform]}">${PLAT[x.platform]}</h2>
@@ -61,12 +63,12 @@ export function reportHtml(r) {
       ${multiChart({ labels: r.dates, formats: [(v) => brl(v, 0).replace('R$ ', ''), (v) => v],
         series: r.platforms.map((x) => ({ name: `${PLAT[x.platform]} (R$)`, color: COLOR[x.platform], values: x.series.map((s) => s.spend), type: r.dates.length === 1 ? 'bar' : 'line' })) })}</section>
 
-    <section class="panel" style="margin-bottom:16px"><h2>Evolução mês a mês</h2>
+    ${changes ? `<section class="panel" style="margin-bottom:16px"><h2>Evolução mês a mês</h2>
       <div class="scroll-x"><table class="table compact"><thead><tr><th>Mês</th><th>Investimento</th><th></th><th>Resultados</th><th>Custo/resultado</th></tr></thead><tbody>
         ${r.history.map((h) => `<tr><td>${esc(h.label)}</td><td>${brl(h.spend)}</td>
           <td style="width:30%"><div class="bar"><i style="width:${Math.round((h.spend / maxSpend) * 100)}%"></i></div></td>
           <td>${num(h.results)}</td><td>${h.cpr != null ? brl(h.cpr) : '—'}</td></tr>`).join('')}
-      </tbody></table></div></section>`;
+      </tbody></table></div></section>` : ''}`;
 }
 
 const resLabel = (metric) => (metric === 'reach' ? 'Alcance' : 'Resultados');

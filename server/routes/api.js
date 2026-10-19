@@ -6,7 +6,7 @@ import { publicSettings, setSetting, SETTING_DEFS } from '../settings.js';
 import { syncAll, isSyncing, fetchCampaigns } from '../sync.js';
 import { evaluateAlerts, openAlertCount } from '../alerts.js';
 import { hashPassword, passwordProblem, randomToken, sha256 } from '../security.js';
-import { monthReport, linksOf, isMonth } from '../report.js';
+import { periodReport, periodFromQuery, linksOf } from '../report.js';
 import { connectedApps, resourceUrl, mcpAllowedEmails } from '../mcp/oauth.js';
 import { todayBR } from '../metrics.js';
 
@@ -54,12 +54,11 @@ r.get('/clients/:id/campaigns', async (req, res) => {
 });
 
 /* ------------------------------ Relatórios ------------------------------ */
-const monthParam = (q) => (isMonth(q) ? q : todayBR().slice(0, 7));
-
+// prévia no painel; ?changes=0 simula o que o cliente verá com crescimento/queda oculto
 r.get('/clients/:id/report', (req, res) => {
   const id = asInt(req.params.id);
   if (!id || !get('SELECT 1 FROM clients WHERE id = ?', id)) return fail(res, 'Cliente não encontrado.', 404);
-  res.json(monthReport(id, monthParam(req.query.month)));
+  res.json(periodReport(id, periodFromQuery(req.query), { showChanges: req.query.changes !== '0' }));
 });
 
 r.get('/clients/:id/report-links', staff, (req, res) => {
@@ -74,10 +73,11 @@ r.post('/clients/:id/report-links', staff, (req, res) => {
   if (!id || !get('SELECT 1 FROM clients WHERE id = ?', id)) return fail(res, 'Cliente não encontrado.', 404);
   const days = Math.min(365, Math.max(1, asInt(req.body?.days) ?? 30));
   const token = randomToken(24);
-  run('INSERT INTO report_links (client_id, token_hash, created_by, expires_at) VALUES (?,?,?,unixepoch() + ?)',
-    id, sha256(token), req.user.id, days * 86400);
-  audit(req, 'report_link_create', `cliente ${id}, ${days} dias`);
-  res.status(201).json({ path: `/r/${token}`, days });
+  const showChanges = req.body?.showChanges === false ? 0 : 1; // só quem gera o link (admin/gerente) decide
+  run('INSERT INTO report_links (client_id, token_hash, created_by, expires_at, show_changes) VALUES (?,?,?,unixepoch() + ?,?)',
+    id, sha256(token), req.user.id, days * 86400, showChanges);
+  audit(req, 'report_link_create', `cliente ${id}, ${days} dias, comparativo ${showChanges ? 'visível' : 'oculto'}`);
+  res.status(201).json({ path: `/r/${token}`, days, showChanges: !!showChanges });
 });
 
 r.delete('/report-links/:id', staff, (req, res) => {

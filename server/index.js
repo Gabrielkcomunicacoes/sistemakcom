@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import rateLimit from 'express-rate-limit';
 import { assertMasterKey, sha256 } from './security.js';
-import { activeLink, monthReport, isMonth } from './report.js';
+import { activeLink, periodReport, periodFromQuery } from './report.js';
 import { todayBR, isDate } from './metrics.js';
 import { all } from './db.js';
 import { attachSession, csrfGuard, requireAuth, purgeExpired, SECURE } from './session.js';
@@ -69,8 +69,7 @@ app.get('/r/:token', reportLimit, noIndex, (_req, res) => res.sendFile(path.join
 app.get('/r/:token/data', reportLimit, noIndex, (req, res) => {
   const link = /^[A-Za-z0-9_-]{20,64}$/.test(req.params.token) ? activeLink(sha256(req.params.token)) : null;
   if (!link) return res.status(404).json({ error: 'Link inválido ou expirado.' });
-  const month = isMonth(req.query.month) ? req.query.month : todayBR().slice(0, 7);
-  res.json(monthReport(link.client_id, month));
+  res.json(periodReport(link.client_id, periodFromQuery(req.query), { showChanges: !!link.show_changes }));
 });
 
 /* Campanhas e criativos ativos (consulta ao vivo, com cache curto para não expor as APIs a acessos públicos) */

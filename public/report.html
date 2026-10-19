@@ -11,13 +11,18 @@
 <body class="report">
   <main class="rep-wrap">
     <div class="rep-bar" id="bar">
-      <label>Mês <input type="month" id="month"></label>
+      <div class="rep-period">
+        <select id="mode" aria-label="Tipo de período"><option value="month">Mês</option><option value="range">Período</option><option value="day">Data específica</option></select>
+        <input type="month" id="month" aria-label="Mês">
+        <label id="rangeBox" class="hidden">De <input type="date" id="from"> até <input type="date" id="to"></label>
+        <input type="date" id="day" class="hidden" aria-label="Data">
+      </div>
       <button class="btn primary" id="print" type="button">Imprimir / Salvar PDF</button>
     </div>
     <div id="report"></div>
     <section class="panel" id="live" style="margin-top:16px"></section>
     <p class="muted rep-foot">Relatório gerado automaticamente · KCOM</p>
   </main>
-  <script type="module" src="/assets/report.js?v=2"></script>
+  <script type="module" src="/assets/report.js?v=3"></script>
 </body>
 </html>
