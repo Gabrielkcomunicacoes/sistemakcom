@@ -106,6 +106,24 @@ export async function fetchMeta(ch, from, to) {
   return { days, balance, problem, funding };
 }
 
+/** Alcance único do período (consulta sem quebra por dia). Períodos encerrados ficam em cache para sempre; o em andamento, 30 min. */
+export async function ensureReach(clientId, ranges) {
+  const today = todayBR();
+  const chs = all("SELECT * FROM channels WHERE client_id = ? AND active = 1 AND platform = 'meta'", clientId).filter((c) => REAL_ID.test(c.account_id));
+  const token = getSetting('meta_access_token');
+  if (!token) return;
+  await Promise.all(chs.flatMap((ch) => ranges.map(async ({ from, to }) => {
+    const hit = get('SELECT fetched_at FROM reach_period WHERE channel_id = ? AND from_date = ? AND to_date = ?', ch.id, from, to);
+    if (hit && (to < today || hit.fetched_at > Date.now() / 1000 - 1800)) return;
+    try {
+      const q = new URLSearchParams({ fields: 'reach', time_range: JSON.stringify({ since: from, until: to }) });
+      const j = await http(`https://graph.facebook.com/${META_V}/act_${ch.account_id.replace(/^act_/, '')}/insights?${q}`, { headers: { authorization: `Bearer ${token}` } });
+      run(`INSERT INTO reach_period (channel_id,from_date,to_date,reach,fetched_at) VALUES (?,?,?,?,unixepoch())
+           ON CONFLICT(channel_id,from_date,to_date) DO UPDATE SET reach=excluded.reach, fetched_at=excluded.fetched_at`, ch.id, from, to, +j.data?.[0]?.reach || 0);
+    } catch (e) { console.error('[reach]', ch.id, String(e.message).slice(0, 120)); } // sem o dado, cai na soma diária
+  })));
+}
+
 /* ------------------------------ Google ------------------------------ */
 let gToken = { value: '', exp: 0 };
 async function googleAccessToken() {

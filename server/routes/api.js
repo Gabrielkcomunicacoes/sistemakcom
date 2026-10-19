@@ -3,10 +3,10 @@ import { get, all, run, tx, audit } from '../db.js';
 import { requireRole } from '../session.js';
 import { buildDashboard, clientSeries, clientDetail, resolveRange } from '../metrics.js';
 import { publicSettings, setSetting, SETTING_DEFS } from '../settings.js';
-import { syncAll, isSyncing, fetchCampaigns } from '../sync.js';
+import { syncAll, isSyncing, fetchCampaigns, ensureReach } from '../sync.js';
 import { evaluateAlerts, openAlertCount } from '../alerts.js';
 import { hashPassword, passwordProblem, randomToken, sha256 } from '../security.js';
-import { periodReport, periodFromQuery, linksOf } from '../report.js';
+import { periodReportAsync, periodFromQuery, linksOf } from '../report.js';
 import { connectedApps, resourceUrl, mcpAllowedEmails } from '../mcp/oauth.js';
 import { todayBR } from '../metrics.js';
 
@@ -33,11 +33,12 @@ r.get('/clients/:id/series', (req, res) => {
   res.json({ channels: clientSeries(id, days) });
 });
 
-r.get('/clients/:id/detail', (req, res) => {
+r.get('/clients/:id/detail', async (req, res) => {
   const id = asInt(req.params.id);
   if (!id || !get('SELECT 1 FROM clients WHERE id = ?', id)) return fail(res, 'Cliente não encontrado.', 404);
   const range = resolveRange(req.query.range, req.query.from, req.query.to);
   const metric = METRICS.includes(req.query.metric) ? req.query.metric : '';
+  await ensureReach(id, [range]);
   res.json({ ...clientDetail(id, range, metric), range: range.label });
 });
 
@@ -55,10 +56,10 @@ r.get('/clients/:id/campaigns', async (req, res) => {
 
 /* ------------------------------ Relatórios ------------------------------ */
 // prévia no painel; ?changes=0 simula o que o cliente verá com crescimento/queda oculto
-r.get('/clients/:id/report', (req, res) => {
+r.get('/clients/:id/report', async (req, res) => {
   const id = asInt(req.params.id);
   if (!id || !get('SELECT 1 FROM clients WHERE id = ?', id)) return fail(res, 'Cliente não encontrado.', 404);
-  res.json(periodReport(id, periodFromQuery(req.query), { showChanges: req.query.changes !== '0' }));
+  res.json(await periodReportAsync(id, periodFromQuery(req.query), { showChanges: req.query.changes !== '0' }));
 });
 
 r.get('/clients/:id/report-links', staff, (req, res) => {

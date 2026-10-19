@@ -108,6 +108,15 @@ CREATE TABLE IF NOT EXISTS report_links (
 try { db.exec("ALTER TABLE channels ADD COLUMN result_type TEXT NOT NULL DEFAULT 'auto'"); } catch { /* coluna já existe */ }
 try { db.exec('ALTER TABLE channel_status ADD COLUMN funding TEXT'); } catch { /* coluna já existe */ }
 try { db.exec('ALTER TABLE report_links ADD COLUMN show_changes INTEGER NOT NULL DEFAULT 1'); } catch { /* coluna já existe */ }
+// Alcance ÚNICO de um período (a soma dos alcances diários conta a mesma pessoa várias vezes, então não serve para períodos)
+db.exec(`CREATE TABLE IF NOT EXISTS reach_period (
+  channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+  from_date TEXT NOT NULL,
+  to_date TEXT NOT NULL,
+  reach REAL NOT NULL,
+  fetched_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  PRIMARY KEY (channel_id, from_date, to_date)
+);`);
 
 for (const col of ['impressions', 'clicks', 'reach']) {
   try { db.exec(`ALTER TABLE metrics_daily ADD COLUMN ${col} REAL NOT NULL DEFAULT 0`); } catch { /* já existe */ }

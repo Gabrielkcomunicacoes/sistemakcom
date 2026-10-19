@@ -1,4 +1,4 @@
-import { all } from './db.js';
+import { all, get } from './db.js';
 
 const TZ = 'America/Sao_Paulo';
 
@@ -186,12 +186,17 @@ export function clientDetail(clientId, { from, to }, metricFilter = '') {
   const platforms = chs.map((ch) => {
     const rows = new Map(all('SELECT * FROM metrics_daily WHERE channel_id = ? AND date BETWEEN ? AND ?', ch.id, from, to).map((r) => [r.date, r]));
     const a = zero();
+    let dailyReach = 0;
     const series = dates.map((date) => {
       const r = rows.get(date);
       const p = { date, spend: r?.spend ?? 0, conv: r?.conversions ?? 0, impressions: r?.impressions ?? 0, clicks: r?.clicks ?? 0, reach: r?.reach ?? 0 };
       for (const k of Object.keys(a)) a[k] += p[k];
       return p;
     });
+    dailyReach = a.reach;
+    // alcance do período = pessoas únicas (consultado na Meta); a soma dos dias repete quem foi alcançado em mais de um dia
+    const uniq = ch.platform === 'meta' ? get('SELECT reach FROM reach_period WHERE channel_id = ? AND from_date = ? AND to_date = ?', ch.id, from, to) : null;
+    if (uniq) a.reach = uniq.reach;
     const isReach = ch.metric === 'reach';
     const results = isReach ? 0 : a.conv;
     for (const k of ['spend', 'impressions', 'clicks', 'reach']) tot[k] += a[k];
@@ -204,7 +209,7 @@ export function clientDetail(clientId, { from, to }, metricFilter = '') {
         ctr: a.impressions > 0 ? round((a.clicks / a.impressions) * 100) : null,
         cpc: a.clicks > 0 ? round(a.spend / a.clicks) : null,
         cpm: a.impressions > 0 ? round((a.spend / a.impressions) * 1000) : null,
-        avgReach: dates.length ? round(a.reach / dates.length, 0) : null,
+        avgReach: dates.length ? round(dailyReach / dates.length, 0) : null,
       },
       series,
     };

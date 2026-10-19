@@ -1,5 +1,6 @@
 import { get, all } from './db.js';
 import { clientDetail, addDays, todayBR, isDate } from './metrics.js';
+import { ensureReach } from './sync.js';
 
 export const isMonth = (s) => /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
 
@@ -37,8 +38,8 @@ export function periodFromQuery(q) {
 /** Relatório mensal de um cliente: mês escolhido vs. mesmo período do mês anterior + histórico de 6 meses. */
 export const monthReport = (clientId, month, opts) => periodReport(clientId, { month }, opts);
 
-/** Relatório de um período: mês inteiro, intervalo ou dia único. `showChanges: false` remove tudo que indica crescimento/queda. */
-export function periodReport(clientId, { month, range }, { showChanges = true } = {}) {
+/** Período atual e o anterior (mesmo tamanho) de uma consulta de relatório. */
+function periodRanges({ month, range }) {
   const today = todayBR();
   let cur, prev, label;
   if (range) {
@@ -57,6 +58,21 @@ export function periodReport(clientId, { month, range }, { showChanges = true } 
     if (prev.to > monthEnd(pm)) prev.to = monthEnd(pm); // mês anterior mais curto
     label = monthLabel(month);
   }
+  return { cur, prev, label, month };
+}
+
+/** Busca na Meta o alcance único dos períodos do relatório (cacheado) e então monta o relatório. */
+export async function periodReportAsync(clientId, period, opts = {}) {
+  const { cur, prev } = periodRanges(period);
+  await ensureReach(clientId, opts.showChanges === false ? [cur] : [cur, prev]);
+  return periodReport(clientId, period, opts);
+}
+
+/** Relatório de um período: mês inteiro, intervalo ou dia único. `showChanges: false` remove tudo que indica crescimento/queda. */
+export function periodReport(clientId, period, { showChanges = true } = {}) {
+  const today = todayBR();
+  const { cur, prev, label, month } = periodRanges(period);
+  const range = period.range;
 
   const now = clientDetail(clientId, cur);
   const t = now.totals;

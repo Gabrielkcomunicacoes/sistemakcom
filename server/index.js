@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import rateLimit from 'express-rate-limit';
 import { assertMasterKey, sha256 } from './security.js';
-import { activeLink, periodReport, periodFromQuery } from './report.js';
+import { activeLink, periodReportAsync, periodFromQuery } from './report.js';
 import { todayBR, isDate } from './metrics.js';
 import { all } from './db.js';
 import { attachSession, csrfGuard, requireAuth, purgeExpired, SECURE } from './session.js';
@@ -66,10 +66,10 @@ app.use('/api', (_req, res) => res.status(404).json({ error: 'Não encontrado.' 
 const reportLimit = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false });
 const noIndex = (_req, res, next) => { res.setHeader('X-Robots-Tag', 'noindex, nofollow'); res.setHeader('Cache-Control', 'no-store'); next(); };
 app.get('/r/:token', reportLimit, noIndex, (_req, res) => res.sendFile(path.join(pub, 'report.html')));
-app.get('/r/:token/data', reportLimit, noIndex, (req, res) => {
+app.get('/r/:token/data', reportLimit, noIndex, async (req, res) => {
   const link = /^[A-Za-z0-9_-]{20,64}$/.test(req.params.token) ? activeLink(sha256(req.params.token)) : null;
   if (!link) return res.status(404).json({ error: 'Link inválido ou expirado.' });
-  res.json(periodReport(link.client_id, periodFromQuery(req.query), { showChanges: !!link.show_changes }));
+  res.json(await periodReportAsync(link.client_id, periodFromQuery(req.query), { showChanges: !!link.show_changes }));
 });
 
 /* Campanhas e criativos ativos (consulta ao vivo, com cache curto para não expor as APIs a acessos públicos) */
